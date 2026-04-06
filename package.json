@@ -1,0 +1,19 @@
+{
+  "name": "second-brain-ai",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Local-first Second Brain / LLM Wiki — CLI, dashboard, MCP",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:dashboard": "npm run dev -w @second-brain/dashboard",
+    "lint": "npm run lint --workspaces --if-present",
+    "brain": "node packages/cli/dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

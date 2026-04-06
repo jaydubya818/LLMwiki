@@ -1,0 +1,13 @@
+node_modules
+.cursor
+dist
+.next
+.turbo
+.env
+.env.local
+*.log
+.DS_Store
+.brain/search-index.json
+.brain/graph.json
+coverage
+.vercel
