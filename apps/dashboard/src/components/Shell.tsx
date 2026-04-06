@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 
 const primaryLinks = [
@@ -37,8 +37,14 @@ const advancedLinks = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const router = useRouter();
   const [q, setQ] = useState("");
+
+  // Wiki pages manage their own full-viewport layout
+  if (pathname.startsWith("/wiki")) {
+    return <>{children}</>;
+  }
 
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
