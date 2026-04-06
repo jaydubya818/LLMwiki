@@ -11,9 +11,16 @@
     "build": "npm run build -w @second-brain/core && npm run build -w @second-brain/cli -w @second-brain/mcp -w @second-brain/dashboard",
     "dev:dashboard": "npm run dev -w @second-brain/dashboard",
     "lint": "npm run lint --workspaces --if-present",
-    "brain": "node packages/cli/dist/index.js"
+    "brain": "node packages/cli/dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.2",
+    "vitest": "^4.1.2"
   }
 }

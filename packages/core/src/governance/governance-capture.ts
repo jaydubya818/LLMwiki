@@ -47,25 +47,37 @@ export async function readGovernanceActionLog(paths: BrainPaths): Promise<Govern
   }
 }
 
+/** Serialise concurrent writes to the action log so entries are never lost. */
+const actionLogChains = new Map<string, Promise<unknown>>();
+
+function enqueueActionLogWrite<T>(fileKey: string, fn: () => Promise<T>): Promise<T> {
+  const prev = actionLogChains.get(fileKey) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  actionLogChains.set(fileKey, run.then(() => undefined, () => undefined));
+  return run;
+}
+
 export async function appendGovernanceActionLog(
   paths: BrainPaths,
   entry: Omit<GovernanceActionLogEntry, "id" | "at">
 ): Promise<GovernanceActionLogEntry> {
-  const f = await readGovernanceActionLog(paths);
-  const rec: GovernanceActionLogEntry = {
-    ...entry,
-    id: uuid(),
-    at: new Date().toISOString(),
-  };
-  f.entries.unshift(rec);
-  f.entries = f.entries.slice(0, 1500);
-  await fs.mkdir(path.dirname(paths.governanceActionLogJson), { recursive: true });
-  await fs.writeFile(
-    paths.governanceActionLogJson,
-    JSON.stringify({ ...f, updatedAt: new Date().toISOString() }, null, 2),
-    "utf8"
-  );
-  return rec;
+  return enqueueActionLogWrite(paths.governanceActionLogJson, async () => {
+    const f = await readGovernanceActionLog(paths);
+    const rec: GovernanceActionLogEntry = {
+      ...entry,
+      id: uuid(),
+      at: new Date().toISOString(),
+    };
+    f.entries.unshift(rec);
+    f.entries = f.entries.slice(0, 1500);
+    await fs.mkdir(path.dirname(paths.governanceActionLogJson), { recursive: true });
+    await fs.writeFile(
+      paths.governanceActionLogJson,
+      JSON.stringify({ ...f, updatedAt: new Date().toISOString() }, null, 2),
+      "utf8"
+    );
+    return rec;
+  });
 }
 
 export interface CouncilMinutesAppend {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
+import { internalServerError, requireDashboardApiKey, parseJsonBody } from "@/lib/api-route-helpers";
 import {
   brainPaths,
   readCanonAdmission,
@@ -17,22 +18,26 @@ export async function GET() {
     const f = await readCanonAdmission(paths);
     return NextResponse.json(f ?? { records: [], version: 1 });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }
 
 export async function POST(req: Request) {
   try {
+    const unauthorized = requireDashboardApiKey(req);
+    if (unauthorized) return unauthorized;
     const cfg = await getServerBrainConfig();
     const paths = brainPaths(cfg.root);
-    const body = (await req.json()) as {
+    const parsed = await parseJsonBody<{
       id?: string;
       reviewerNote?: string;
       rationale?: string;
       finalDecision?: "ready" | "not_ready" | "deferred";
       appendCouncilMinutes?: { title?: string; lines?: string[]; followUp?: string };
       minutesAsSessionFile?: boolean;
-    };
+    }>(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
     const admissionData = await readCanonAdmission(paths);
     const existing = admissionData?.records?.find((r) => r.id === body.id);
@@ -108,6 +113,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, rec });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }

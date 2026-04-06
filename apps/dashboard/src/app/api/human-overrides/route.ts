@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
-import { parseJsonBody, internalServerError } from "@/lib/api-route-helpers";
+import { parseJsonBody, internalServerError, requireDashboardApiKey } from "@/lib/api-route-helpers";
 import { brainPaths, readHumanOverrides, recordHumanOverride, type HumanOverrideType } from "@second-brain/core";
 
 const VALID_OVERRIDE_TYPES = new Set<string>([
@@ -33,6 +33,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const unauthorized = requireDashboardApiKey(req);
+    if (unauthorized) return unauthorized;
     const parsed = await parseJsonBody<{
       relatedPath?: string;
       overrideType?: string;

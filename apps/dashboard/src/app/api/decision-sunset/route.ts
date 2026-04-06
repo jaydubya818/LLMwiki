@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
-import { internalServerError } from "@/lib/api-route-helpers";
+import { internalServerError, requireDashboardApiKey, parseJsonBody } from "@/lib/api-route-helpers";
 import {
   brainPaths,
   readDecisionSunset,
@@ -23,13 +23,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const unauthorized = requireDashboardApiKey(req);
+    if (unauthorized) return unauthorized;
     const cfg = await getServerBrainConfig();
     const paths = brainPaths(cfg.root);
-    const body = (await req.json()) as {
-      id?: string;
-      status?: DecisionSunsetStatus;
-      rationale?: string;
-    };
+    const parsed = await parseJsonBody<{ id?: string; status?: DecisionSunsetStatus; rationale?: string }>(req);
+    if (!parsed.ok) return parsed.response;
+    const body = parsed.data;
     if (!body.id || !body.status) {
       return NextResponse.json({ error: "id and status required" }, { status: 400 });
     }
