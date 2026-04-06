@@ -1,12 +1,16 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 const primaryLinks = [
-  { href: "/",        label: "Home",            desc: "Overview & quick actions" },
-  { href: "/wiki",    label: "Browse Notes",    desc: "Read your wiki pages" },
-  { href: "/search",  label: "Search",          desc: "Find anything" },
-  { href: "/diff",    label: "Review Changes",  desc: "Approve or reject edits" },
-  { href: "/graph",   label: "Knowledge Graph", desc: "See connections" },
-  { href: "/doctor",  label: "Health Check",    desc: "System status" },
+  { href: "/wiki",   label: "Browse Notes",    desc: "Read your wiki pages" },
+  { href: "/search", label: "Search",          desc: "Find anything" },
+  { href: "/diff",   label: "Review Changes",  desc: "Approve or reject edits" },
+  { href: "/graph",  label: "Knowledge Graph", desc: "See connections" },
+  { href: "/doctor", label: "Health Check",    desc: "System status" },
+  { href: "/",       label: "Dashboard",       desc: "Overview & quick actions" },
 ];
 
 const advancedLinks = [
@@ -33,11 +37,22 @@ const advancedLinks = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [q, setQ] = useState("");
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (q.trim()) {
+      router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+      setQ("");
+    }
+  }
+
   return (
     <div className="flex min-h-screen">
-      <aside className="w-52 shrink-0 border-r border-[var(--border)] bg-[var(--card)]/80 px-3 py-6 backdrop-blur">
+      <aside className="w-52 shrink-0 border-r border-[var(--border)] bg-[var(--card)] px-3 py-6">
         {/* Brand */}
-        <div className="mb-7 px-2">
+        <div className="mb-5 px-2">
           <div className="text-[10px] font-semibold uppercase tracking-widest text-[var(--muted)]">
             Second Brain
           </div>
@@ -45,6 +60,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
             My Wiki
           </div>
         </div>
+
+        {/* Search */}
+        <form onSubmit={handleSearch} className="mb-5 px-1">
+          <div className="relative">
+            <svg
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted)]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search notes…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-white py-1.5 pl-8 pr-3 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+            />
+          </div>
+        </form>
 
         {/* Primary nav */}
         <nav className="flex flex-col gap-0.5">
@@ -64,7 +100,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Advanced accordion (native HTML — no JS required) */}
+        {/* Advanced accordion */}
         <details className="mt-5">
           <summary className="flex cursor-pointer select-none items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-[var(--muted)] transition hover:bg-[var(--ring)]/30 hover:text-[var(--foreground)] [&::-webkit-details-marker]:hidden">
             <svg

@@ -246,7 +246,7 @@ function WikiBody() {
   }, [panelQ, path, trace]);
 
   if (data?.error) {
-    return <p className="text-red-400">{data.error}</p>;
+    return <p className="text-red-600">{data.error}</p>;
   }
   if (!data) return <p className="text-[var(--muted)]">Loading…</p>;
 
@@ -268,7 +268,7 @@ function WikiBody() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(180px,240px)_minmax(0,1fr)_minmax(0,280px)]">
       <WikiSidebar files={tree} currentPath={path} />
-      <article className="prose prose-invert max-w-none prose-headings:text-[var(--foreground)] prose-a:text-sky-400">
+      <article className="prose max-w-none prose-headings:text-[var(--foreground)] prose-a:text-blue-600">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.content ?? ""}</ReactMarkdown>
       </article>
       <aside className="space-y-4 text-sm">
@@ -284,9 +284,9 @@ function WikiBody() {
           </div>
         ) : null}
         {lockHint ? (
-          <div className="rounded-md border border-amber-700/40 bg-amber-950/30 p-3 text-xs text-amber-100/90">
+          <div className="rounded-md border border-amber-400 bg-amber-50 p-3 text-xs text-amber-800">
             <span className="font-semibold">Canonical guard</span>
-            <p className="mt-1 text-[var(--muted)]">{lockHint}</p>
+            <p className="mt-1 text-amber-700">{lockHint}</p>
           </div>
         ) : null}
         {humanR ? (
@@ -294,7 +294,7 @@ function WikiBody() {
             <div className="text-xs uppercase text-[var(--muted)]">Human review badge</div>
             <div className="mt-1 font-medium capitalize text-[var(--foreground)]">{humanR.badge.replace(/-/g, " ")}</div>
             {humanR.staleAfterEdit ? (
-              <p className="mt-1 text-xs text-amber-200/90">File changed after last human_reviewed_at — consider re-review.</p>
+              <p className="mt-1 text-xs text-amber-700">File changed after last human_reviewed_at — consider re-review.</p>
             ) : (
               <p className="mt-1 text-xs text-[var(--muted)]">From frontmatter + `.brain/human-review.json` after refresh.</p>
             )}
@@ -338,7 +338,7 @@ function WikiBody() {
               <p className="mt-1 text-xs text-[var(--muted)]">Not enough history yet — run refreshes over time.</p>
             )}
             {confHist.sparkline.length > 1 ? (
-              <p className="mt-2 font-mono text-[10px] text-zinc-400">
+              <p className="mt-2 font-mono text-[10px] text-zinc-500">
                 {confHist.sparkline.map((v, i) => (
                   <span key={i} title={`${v}`}>
                     {v}
@@ -383,12 +383,12 @@ function WikiBody() {
           </p>
         ) : null}
         {evidenceAlerts.length ? (
-          <div className="rounded-md border border-amber-700/35 bg-amber-950/25 p-3">
+          <div className="rounded-md border border-amber-400 bg-amber-50 p-3">
             <div className="text-xs uppercase text-[var(--muted)]">Evidence change (recent)</div>
             <ul className="mt-2 space-y-2 text-xs text-[var(--muted)]">
               {evidenceAlerts.map((a) => (
                 <li key={a.id}>
-                  <span className="font-medium text-amber-200/90">{a.severity}</span>: {a.changeSummary}
+                  <span className="font-medium text-amber-700">{a.severity}</span>: {a.changeSummary}
                   {a.why ? <span className="block text-[10px] text-zinc-500">{a.why}</span> : null}
                 </li>
               ))}
@@ -452,7 +452,7 @@ function WikiBody() {
             {selected ? (
               <div className="mt-2 space-y-2 text-xs">
                 {selected.notes ? (
-                  <p className="text-amber-200/80">{selected.notes}</p>
+                  <p className="text-amber-700">{selected.notes}</p>
                 ) : null}
                 <div className="text-[var(--muted)]">Raw sources</div>
                 <ul className="max-h-32 space-y-1 overflow-auto font-mono text-[var(--accent)]">
@@ -475,7 +475,7 @@ function WikiBody() {
             <button
               type="button"
               disabled={humanReviewLoading || snapshotLoading}
-              className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-sky-400 hover:bg-[var(--ring)]/30 disabled:opacity-50"
+              className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-blue-600 hover:bg-[var(--ring)]/30 disabled:opacity-50"
               onClick={async () => {
                 setGovActionMsg(null);
                 setHumanReviewLoading(true);
@@ -523,7 +523,7 @@ function WikiBody() {
             <button
               type="button"
               disabled={snapshotLoading || humanReviewLoading}
-              className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-zinc-300 hover:bg-[var(--ring)]/30 disabled:opacity-50"
+              className="w-full rounded border border-[var(--border)] py-1.5 text-xs text-zinc-600 hover:bg-[var(--ring)]/30 disabled:opacity-50"
               onClick={async () => {
                 setGovActionMsg(null);
                 setSnapshotLoading(true);
@@ -564,7 +564,7 @@ function WikiBody() {
             {govActionMsg ? (
               <p
                 className={
-                  govActionMsg.error ? "text-xs text-rose-400" : "text-xs text-emerald-400/90"
+                  govActionMsg.error ? "text-xs text-red-600" : "text-xs text-emerald-700"
                 }
               >
                 {govActionMsg.text}

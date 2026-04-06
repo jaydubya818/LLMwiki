@@ -168,10 +168,10 @@ export function DashboardHome() {
 
       {/* ── First-time setup banner ─────────────────────────────────────── */}
       {neverRun && (
-        <div className="rounded-xl border border-sky-600/40 bg-sky-950/30 px-5 py-4">
-          <p className="text-sm font-medium text-sky-200">👋 Getting started</p>
+        <div className="rounded-xl border border-blue-300 bg-blue-50 px-5 py-4">
+          <p className="text-sm font-medium text-blue-800">👋 Getting started</p>
           <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-[var(--muted)]">
-            <li>Drop files into <code className="rounded bg-black/30 px-1 text-xs text-sky-300">raw/</code> — notes, PDFs, anything.</li>
+            <li>Drop files into <code className="rounded bg-blue-100 px-1 text-xs text-blue-700">raw/</code> — notes, PDFs, anything.</li>
             <li>Click <strong className="text-[var(--foreground)]">Sync Wiki</strong> below to process them.</li>
             <li>Browse, search, and ask questions about your notes.</li>
           </ol>
@@ -181,21 +181,21 @@ export function DashboardHome() {
       {/* ── 3-step action cards ─────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Card 1: Add files */}
-        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
           <div className="text-2xl">📁</div>
           <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Add Files</h2>
           <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
-            Drop notes, PDFs, or links into your <code className="rounded bg-black/30 px-1 text-xs">raw/</code> folder.
+            Drop notes, PDFs, or links into your <code className="rounded bg-[var(--border)] px-1 text-xs">raw/</code> folder.
           </p>
           <div className="mt-4">
-            <code className="block rounded-lg bg-black/40 px-3 py-2 font-mono text-xs text-[var(--accent)]">
+            <code className="block rounded-lg bg-[var(--border)] px-3 py-2 font-mono text-xs text-[var(--accent)]">
               {s.root ?? "~/My LLM Wiki"}/raw/
             </code>
           </div>
         </div>
 
         {/* Card 2: Sync wiki */}
-        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
           <div className="text-2xl">🔄</div>
           <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Sync Wiki</h2>
           <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
@@ -213,19 +213,19 @@ export function DashboardHome() {
             {pending > 0 && !syncing && (
               <Link
                 href="/diff"
-                className="block rounded-lg border border-amber-500/50 bg-amber-950/20 px-4 py-2 text-center text-sm text-amber-200 hover:border-amber-400"
+                className="block rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-center text-sm text-amber-800 hover:border-amber-500"
               >
                 {pending} change{pending !== 1 ? "s" : ""} to review →
               </Link>
             )}
             {syncResult && (
-              <p className="text-xs text-emerald-300">{syncResult}</p>
+              <p className="text-xs text-emerald-700">{syncResult}</p>
             )}
           </div>
         </div>
 
         {/* Card 3: Ask questions */}
-        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-5">
           <div className="text-2xl">🔍</div>
           <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Ask Anything</h2>
           <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
@@ -245,7 +245,7 @@ export function DashboardHome() {
               placeholder="What connects…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-sky-500"
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <Link
               href="/search"
@@ -259,24 +259,24 @@ export function DashboardHome() {
 
       {/* ── Alerts (only show when there's actually something to do) ───── */}
       {doctorVerdict === "blocked" && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-950/25 px-4 py-3 text-sm">
+        <div className="flex items-start gap-3 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm">
           <span className="text-lg">🔴</span>
           <div>
-            <p className="font-medium text-red-200">Health check found issues that need fixing</p>
+            <p className="font-medium text-red-800">Health check found issues that need fixing</p>
             <p className="mt-0.5 text-xs text-[var(--muted)]">{s.doctorLast?.cache?.summary}</p>
-            <Link href="/doctor" className="mt-2 inline-block text-xs text-sky-400 hover:underline">
+            <Link href="/doctor" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
               View details →
             </Link>
           </div>
         </div>
       )}
       {doctorVerdict === "warnings" && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/20 px-4 py-3 text-sm">
+        <div className="flex items-start gap-3 rounded-xl border border-amber-400 bg-amber-50 px-4 py-3 text-sm">
           <span className="text-lg">🟡</span>
           <div>
-            <p className="font-medium text-amber-200">Health check found a few warnings</p>
+            <p className="font-medium text-amber-800">Health check found a few warnings</p>
             <p className="mt-0.5 text-xs text-[var(--muted)]">{s.doctorLast?.cache?.summary}</p>
-            <Link href="/doctor" className="mt-2 inline-block text-xs text-sky-400 hover:underline">
+            <Link href="/doctor" className="mt-2 inline-block text-xs text-blue-600 hover:underline">
               View details →
             </Link>
           </div>
@@ -313,11 +313,11 @@ export function DashboardHome() {
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-[var(--foreground)]">Recent Notes</h2>
-            <Link href="/wiki" className="text-xs text-sky-400 hover:underline">
+            <Link href="/wiki" className="text-xs text-blue-600 hover:underline">
               Browse all →
             </Link>
           </div>
-          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]/60">
+          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]">
             {recentNotes.map((f) => {
               const name = f.path.replace(/^wiki\//, "").replace(/\.md$/, "");
               return (
@@ -343,11 +343,11 @@ export function DashboardHome() {
         <section>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-[var(--foreground)]">Recent Activity</h2>
-            <Link href="/runs" className="text-xs text-sky-400 hover:underline">
+            <Link href="/runs" className="text-xs text-blue-600 hover:underline">
               View all →
             </Link>
           </div>
-          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]/60">
+          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]">
             {recentRuns.map((r, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
                 <span className={`h-2 w-2 rounded-full ${r.ok ? "bg-emerald-400" : "bg-amber-400"}`} />
@@ -364,7 +364,7 @@ export function DashboardHome() {
       {/* ── Empty state (no notes, no runs) ────────────────────────────── */}
       {recentNotes.length === 0 && recentRuns.length === 0 && !neverRun && (
         <div className="rounded-xl border border-dashed border-[var(--border)] px-6 py-10 text-center">
-          <p className="text-[var(--muted)]">Nothing here yet — add files to <code className="text-xs text-sky-400">raw/</code> and click Sync.</p>
+          <p className="text-[var(--muted)]">Nothing here yet — add files to <code className="text-xs text-blue-600">raw/</code> and click Sync.</p>
         </div>
       )}
 
@@ -379,8 +379,8 @@ function Stat({ label, value, stale }: { label: string; value: string; stale?: b
     <div
       className={`rounded-xl border p-3 ${
         stale
-          ? "border-amber-600/40 bg-amber-950/20"
-          : "border-[var(--border)] bg-[var(--card)]/80"
+          ? "border-amber-400 bg-amber-50"
+          : "border-[var(--border)] bg-[var(--card)]"
       }`}
     >
       <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{label}</div>

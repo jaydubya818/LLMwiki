@@ -13,7 +13,7 @@ export function WikiSidebar({
 
   return (
     <nav
-      className="max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)]/50 p-3 text-sm"
+      className="max-h-[calc(100vh-8rem)] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--card)] p-3 text-sm"
       aria-label="Wiki pages"
     >
       <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
@@ -31,9 +31,9 @@ export function WikiSidebar({
                 href={`/wiki?path=${encodeURIComponent(f)}`}
                 className={`block rounded px-2 py-1 font-mono text-xs transition hover:bg-[var(--ring)]/30 ${
                   active
-                    ? "bg-sky-900/50 text-sky-200"
+                    ? "bg-blue-100 text-blue-700 font-medium"
                     : isIdx
-                      ? "text-amber-200/90"
+                      ? "text-amber-700 font-medium"
                       : "text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >

@@ -1,5 +1,5 @@
-import { DashboardHome } from "@/components/DashboardHome";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <DashboardHome />;
+  redirect("/wiki");
 }
