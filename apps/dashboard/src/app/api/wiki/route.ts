@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import path from "node:path";
 import fs from "node:fs/promises";
-import { getServerBrainConfig } from "@/lib/brain";
+import { getServerBrainConfig, obsidianUri } from "@/lib/brain";
 import matter from "gray-matter";
 import { extractWikilinks } from "@second-brain/core/wikilinks";
 
@@ -24,6 +24,9 @@ export async function GET(req: Request) {
       frontmatter: data,
       content,
       wikilinks: links,
+      vaultName: cfg.vaultName,
+      vaultNameSource: cfg.vaultNameSource,
+      obsidianOpenUrl: obsidianUri(cfg.vaultName, safe),
     });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 404 });

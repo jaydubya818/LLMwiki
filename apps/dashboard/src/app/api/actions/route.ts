@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
-import { runIngest, runLint, runCompile } from "@second-brain/core";
+import {
+  runIngest,
+  runLint,
+  runCompile,
+  runExecutiveReview,
+} from "@second-brain/core";
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +24,10 @@ export async function POST(req: Request) {
       case "compile": {
         const r = await runCompile(cfg);
         return NextResponse.json(r);
+      }
+      case "weekly-review": {
+        const file = await runExecutiveReview(cfg);
+        return NextResponse.json({ path: file, ok: true });
       }
       default:
         return NextResponse.json({ error: "unknown action" }, { status: 400 });

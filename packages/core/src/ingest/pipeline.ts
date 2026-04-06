@@ -183,6 +183,10 @@ export async function runIngest(
     `ingest: processed=${processed} skipped=${skipped} errors=${errors.length}`
   );
   const pending = (await getWikiStatusFilesForBrain(cfg)).map((f) => f.path);
+  const suggestedCommitMessage =
+    pending.length > 0
+      ? `wiki: ingest ${processed} sources — review ${pending.length} file(s) before commit`
+      : `wiki: ingest ${processed} sources (no pending wiki diff)`;
   await writeState(paths, {
     lastIngestAt: stamp,
     pendingWikiChanges: pending,
@@ -191,7 +195,14 @@ export async function runIngest(
     kind: "ingest",
     ok: errors.length === 0,
     summary: `ingest processed=${processed} skipped=${skipped}`,
-    details: { errors, catalogLines, dashBullets },
+    details: {
+      errors,
+      catalogLines,
+      dashBullets,
+      pendingWikiPaths: pending,
+      pendingCount: pending.length,
+      suggestedCommitMessage,
+    },
     errors: errors.length ? errors : undefined,
   });
 

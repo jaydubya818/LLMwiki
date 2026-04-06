@@ -3,16 +3,72 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+type RecentFile = { path: string; mtimeMs: number };
+
+type Operational = {
+  pendingWikiCount: number;
+  pendingPaths: string[];
+  reviewPendingCount: number;
+  reviewStateVersion: string;
+  staleIngest: boolean;
+  staleLint: boolean;
+  ingestAgeDays: number | null;
+  lintAgeDays: number | null;
+  reviewAgeDays: number | null;
+  trustLevel: "clean" | "attention";
+  lastIngestSummary?: string;
+  lastLintSummary?: string;
+  lastReviewSummary?: string;
+  nextActions: string[];
+  recentWiki: RecentFile[];
+  recentOutputs: RecentFile[];
+  suggestedCommitMessage: string;
+};
+
+type LastDoctorCache = {
+  generatedAt: string;
+  verdict: "ready" | "warnings" | "blocked";
+  readinessLabel: string;
+  summary: string;
+  vaultName: string;
+  vaultNameSource: string;
+  failCount: number;
+  warnCount: number;
+  passCount: number;
+  nextActions: string[];
+};
+
+type DoctorLastPayload = {
+  cache: LastDoctorCache | null;
+  meta: {
+    neverRun: boolean;
+    staleByAge: boolean;
+    hints: string[];
+    pendingWikiCountNow: number;
+    error?: string;
+  };
+};
+
 type Status = {
   root?: string;
   brainName?: string;
+  vaultName?: string;
+  vaultNameSource?: string;
   workspaceRoot?: string | null;
   gitRoot?: string;
-  state?: { lastIngestAt?: string; pendingWikiChanges?: string[] };
+  state?: {
+    lastIngestAt?: string;
+    lastCompileAt?: string;
+    lastLintAt?: string;
+    lastReviewAt?: string;
+    pendingWikiChanges?: string[];
+  };
   runs?: { kind: string; summary: string; ok: boolean; startedAt?: string }[];
   searchDocs?: number;
   graphMeta?: { nodeCount?: number; orphans?: number };
   logTail?: string;
+  operational?: Operational;
+  doctorLast?: DoctorLastPayload | null;
   error?: string;
 };
 
@@ -21,8 +77,20 @@ export function DashboardHome() {
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
-    const r = await fetch("/api/status");
-    setS(await r.json());
+    const [stRes, lastRes] = await Promise.all([
+      fetch("/api/status"),
+      fetch("/api/doctor-last"),
+    ]);
+    const st = await stRes.json();
+    const doctorLast = lastRes.ok ? ((await lastRes.json()) as DoctorLastPayload) : null;
+    if (!stRes.ok) {
+      setS({
+        error: typeof st.error === "string" ? st.error : "Could not load status.",
+        doctorLast,
+      });
+      return;
+    }
+    setS({ ...st, doctorLast });
   }, []);
 
   useEffect(() => {
@@ -41,7 +109,7 @@ export function DashboardHome() {
     void load();
   }
 
-  if (s?.error) {
+  if (s?.error && !s.doctorLast) {
     return (
       <div className="max-w-xl rounded-lg border border-red-500/40 bg-red-950/30 p-4 text-sm">
         {s.error}
@@ -53,20 +121,48 @@ export function DashboardHome() {
     return <div className="text-[var(--muted)]">Loading brain status…</div>;
   }
 
-  const pending = s.state?.pendingWikiChanges?.length ?? 0;
+  const op = s.operational;
+  const pending = op?.pendingWikiCount ?? s.state?.pendingWikiChanges?.length ?? 0;
+  const trust = op?.trustLevel ?? (pending > 0 ? "attention" : "clean");
 
   return (
     <div className="mx-auto max-w-6xl space-y-10">
+      {s.error ? (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-950/25 p-3 text-sm text-amber-100">
+          Status API: {s.error}
+          {s.doctorLast ? (
+            <span className="block pt-1 text-xs text-[var(--muted)]">
+              Cached doctor below may still help — fix env (e.g. SECOND_BRAIN_ROOT) and refresh.
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <header className="space-y-2">
         <h1 className="text-3xl font-semibold tracking-tight">Command center</h1>
         <p className="max-w-2xl text-sm text-[var(--muted)]">
-          Trust is git-backed; synthesis is AI-maintained. Use Search and Diff before
-          you approve commits.
+          Weekly rhythm: <strong className="text-[var(--foreground)]">ingest → diff → approve</strong>{" "}
+          → review → lint. Wiki changes stay <strong className="text-[var(--foreground)]">untrusted</strong>{" "}
+          until you review the git diff and commit.
         </p>
         <p className="font-mono text-xs text-[var(--accent)]">
           {s.brainName ? `${s.brainName} · ` : ""}
           {s.root}
         </p>
+        {s.vaultName ? (
+          <p className="text-xs text-[var(--muted)]">
+            Obsidian vault name:{" "}
+            <span className="font-mono text-[var(--accent)]">{s.vaultName}</span>
+            {s.vaultNameSource ? (
+              <span className="text-[var(--muted)]"> ({s.vaultNameSource})</span>
+            ) : null}
+            {s.vaultNameSource === "default" || s.vaultNameSource === "basename" ? (
+              <span className="ml-1 text-amber-400/90">
+                — set <code className="text-[var(--accent)]">SECOND_BRAIN_VAULT_NAME</code> to match
+                Obsidian if links open the wrong vault.
+              </span>
+            ) : null}
+          </p>
+        ) : null}
         {s.workspaceRoot ? (
           <p className="text-xs text-[var(--muted)]">
             Workspace: <span className="font-mono">{s.workspaceRoot}</span>
@@ -74,16 +170,199 @@ export function DashboardHome() {
         ) : null}
       </header>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <Metric label="Last ingest" value={s.state?.lastIngestAt ?? "—"} />
+      <section
+        className={`rounded-xl border p-4 ${
+          trust === "attention"
+            ? "border-amber-500/50 bg-amber-950/25"
+            : "border-emerald-800/40 bg-emerald-950/15"
+        }`}
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+          Trust & review
+        </h2>
+        <p className="mt-2 text-sm">
+          {trust === "attention" ? (
+            <>
+              <span className="font-medium text-amber-200">Attention:</span>{" "}
+              {pending} wiki path(s) have uncommitted changes. Open{" "}
+              <Link href="/diff" className="text-sky-400 underline">
+                Diff
+              </Link>{" "}
+              to approve or reject, then run{" "}
+              <code className="rounded bg-black/30 px-1">brain approve</code> from the repo CLI.
+            </>
+          ) : (
+            <>
+              <span className="font-medium text-emerald-300">Clean working tree</span> for scoped wiki
+              paths — or changes already match HEAD. Keep using Diff after each ingest.
+            </>
+          )}
+        </p>
+        {op?.suggestedCommitMessage ? (
+          <p className="mt-2 font-mono text-xs text-[var(--muted)]">
+            Suggested commit message:{" "}
+            <span className="text-[var(--accent)]">{op.suggestedCommitMessage}</span>
+          </p>
+        ) : null}
+      </section>
+
+      {s.doctorLast ? (
+        <section
+          className={`rounded-xl border p-4 ${
+            s.doctorLast.meta.neverRun
+              ? "border-zinc-600/50 bg-zinc-950/40"
+              : s.doctorLast.cache?.verdict === "blocked"
+                ? "border-red-500/45 bg-red-950/25"
+                : s.doctorLast.cache?.verdict === "warnings"
+                  ? "border-amber-500/45 bg-amber-950/20"
+                  : "border-emerald-800/35 bg-emerald-950/15"
+          }`}
+        >
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Readiness (doctor, cached)
+          </h2>
+          {s.doctorLast.meta.neverRun ? (
+            <p className="mt-2 text-sm text-[var(--muted)]">
+              <strong className="text-[var(--foreground)]">No doctor run yet.</strong> Run{" "}
+              <code className="text-[var(--accent)]">brain doctor</code> once after setup (default writes{" "}
+              <code className="text-[var(--accent)]">.brain/last-doctor.json</code>
+              ). Home reads that file so we do not re-run checks on every refresh.
+            </p>
+          ) : s.doctorLast.cache ? (
+            <>
+              <p className="mt-2 text-sm">{s.doctorLast.cache.readinessLabel}</p>
+              <p className="mt-1 font-mono text-xs text-[var(--muted)]">
+                Last run: {s.doctorLast.cache.generatedAt.slice(0, 19).replace("T", " ")} · vault{" "}
+                <span className="text-[var(--accent)]">{s.doctorLast.cache.vaultName}</span> (
+                {s.doctorLast.cache.vaultNameSource})
+              </p>
+              <p className="mt-1 text-xs text-[var(--muted)]">
+                Fails: {s.doctorLast.cache.failCount} · Warns: {s.doctorLast.cache.warnCount}
+              </p>
+              {s.doctorLast.cache.nextActions[0] ? (
+                <p className="mt-2 text-xs text-[var(--foreground)]">
+                  <span className="text-[var(--muted)]">Top next:</span> {s.doctorLast.cache.nextActions[0]}
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--muted)]">Could not read cached doctor result.</p>
+          )}
+          {(s.doctorLast.meta.staleByAge || s.doctorLast.meta.hints.length > 0) && !s.doctorLast.meta.neverRun ? (
+            <ul className="mt-3 list-inside list-disc space-y-1 border-t border-[var(--border)]/60 pt-3 text-xs text-amber-200/95">
+              {s.doctorLast.meta.staleByAge ? (
+                <li>Snapshot may be stale — run `brain doctor` again for a current check.</li>
+              ) : null}
+              {s.doctorLast.meta.hints.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ul>
+          ) : null}
+          {s.doctorLast.meta.error ? (
+            <p className="mt-2 text-xs text-amber-400/90">{s.doctorLast.meta.error}</p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Link
+              href="/doctor"
+              className="rounded-md bg-violet-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"
+            >
+              Doctor detail
+            </Link>
+            <span className="self-center text-xs text-[var(--muted)]">
+              Refresh cache: <code className="text-[var(--accent)]">brain doctor</code> (omit{" "}
+              <code className="text-[var(--accent)]">--no-save</code>)
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="rounded-xl border border-[var(--border)] bg-[var(--card)]/50 p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+          Weekly workflow
+        </h2>
+        <ol className="mt-3 list-inside list-decimal space-y-2 text-sm text-[var(--muted)]">
+          <li>Add or update files under raw/ (e.g. raw/inbox/).</li>
+          <li>
+            <strong>Ingest</strong> — synthesizes into wiki/ and refreshes indexes.
+          </li>
+          <li>
+            <strong>Diff</strong> — read every changed path; approve/reject in the UI.
+          </li>
+          <li>
+            <strong>Approve</strong> —{" "}
+            <code className="rounded bg-black/30 px-1">brain approve</code> commits approved paths.
+          </li>
+          <li>
+            <strong>Weekly review</strong> — executive markdown in outputs/reviews/.
+          </li>
+          <li>
+            <strong>Lint</strong> — health report in outputs/health-checks/.
+          </li>
+        </ol>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <ActionBtn onClick={() => action("ingest")}>Run ingest</ActionBtn>
+          <ActionBtn onClick={() => action("weekly-review")}>Run weekly review</ActionBtn>
+          <ActionBtn onClick={() => action("lint")}>Run lint</ActionBtn>
+          <Link
+            href="/diff"
+            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+          >
+            Open diff ({pending})
+          </Link>
+        </div>
+        {op?.nextActions?.length ? (
+          <ul className="mt-4 space-y-1 border-t border-[var(--border)]/60 pt-4 text-sm text-[var(--muted)]">
+            <li className="text-xs font-semibold uppercase text-[var(--foreground)]">Suggested next</li>
+            {op.nextActions.map((t, i) => (
+              <li key={i}>• {t}</li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Metric
-          label="Search index docs"
-          value={String(s.searchDocs ?? 0)}
+          label="Last ingest"
+          value={s.state?.lastIngestAt?.slice(0, 19) ?? "—"}
+          stale={!!op?.staleIngest}
         />
         <Metric
-          label="Graph / orphans"
-          value={`${s.graphMeta?.nodeCount ?? 0} nodes · ${s.graphMeta?.orphans ?? 0} orphans`}
+          label="Last lint"
+          value={s.state?.lastLintAt?.slice(0, 19) ?? "—"}
+          stale={!!op?.staleLint}
         />
+        <Metric
+          label="Last weekly review"
+          value={s.state?.lastReviewAt?.slice(0, 19) ?? "—"}
+          stale={(op?.reviewAgeDays ?? 0) > 7}
+        />
+        <Metric label="Search index docs" value={String(s.searchDocs ?? 0)} />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-4">
+          <div className="text-xs uppercase text-[var(--muted)]">Graph</div>
+          <div className="mt-2 text-lg font-medium">
+            {s.graphMeta?.nodeCount ?? 0} nodes · {s.graphMeta?.orphans ?? 0} orphans
+          </div>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-4">
+          <div className="text-xs uppercase text-[var(--muted)]">Last run summaries</div>
+          <ul className="mt-2 space-y-1 text-xs text-[var(--muted)]">
+            <li>
+              <span className="text-[var(--foreground)]">Ingest:</span>{" "}
+              {op?.lastIngestSummary ?? "—"}
+            </li>
+            <li>
+              <span className="text-[var(--foreground)]">Lint:</span>{" "}
+              {op?.lastLintSummary ?? "—"}
+            </li>
+            <li>
+              <span className="text-[var(--foreground)]">Review:</span>{" "}
+              {op?.lastReviewSummary ?? "—"}
+            </li>
+          </ul>
+        </div>
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
@@ -93,34 +372,26 @@ export function DashboardHome() {
           </h2>
           <div className="mt-4 flex flex-wrap gap-2">
             <ActionBtn onClick={() => action("ingest")}>Ingest</ActionBtn>
-            <ActionBtn onClick={() => action("ingest", { force: true })}>
-              Ingest (force)
-            </ActionBtn>
+            <ActionBtn onClick={() => action("ingest", { force: true })}>Ingest (force)</ActionBtn>
             <ActionBtn onClick={() => action("compile")}>Compile</ActionBtn>
             <ActionBtn onClick={() => action("lint")}>Lint</ActionBtn>
             <Link
               href="/search"
               className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
             >
-              Ask / search
+              Search
             </Link>
             <Link
-              href="/diff"
+              href="/wiki"
               className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
             >
-              Diff review ({pending})
+              Wiki
             </Link>
             <Link
-              href="/workspace"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+              href="/doctor"
+              className="rounded-md border border-violet-500/50 px-3 py-2 text-sm text-violet-200 hover:border-violet-400"
             >
-              Workspace
-            </Link>
-            <Link
-              href="/promotions"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
-            >
-              Promotions
+              Run doctor
             </Link>
           </div>
           {msg ? (
@@ -136,7 +407,10 @@ export function DashboardHome() {
           </h2>
           <ul className="mt-4 space-y-2 text-sm">
             {(s.runs ?? []).map((r, i) => (
-              <li key={i} className="flex justify-between gap-4 border-b border-[var(--border)]/60 pb-2">
+              <li
+                key={i}
+                className="flex justify-between gap-4 border-b border-[var(--border)]/60 pb-2"
+              >
                 <span className="text-[var(--muted)]">{r.kind}</span>
                 <span className="flex-1 truncate text-right">{r.summary}</span>
                 <span className={r.ok ? "text-emerald-400" : "text-amber-400"}>
@@ -144,6 +418,37 @@ export function DashboardHome() {
                 </span>
               </li>
             ))}
+          </ul>
+        </div>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Recent wiki edits (mtime)
+          </h2>
+          <ul className="mt-3 space-y-1 font-mono text-xs text-[var(--accent)]">
+            {(op?.recentWiki ?? []).map((f) => (
+              <li key={f.path}>
+                <Link href={`/wiki?path=${encodeURIComponent(f.path)}`} className="hover:underline">
+                  {f.path}
+                </Link>
+              </li>
+            ))}
+            {!op?.recentWiki?.length ? <li className="text-[var(--muted)]">—</li> : null}
+          </ul>
+        </div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Recent outputs
+          </h2>
+          <ul className="mt-3 space-y-1 font-mono text-xs text-[var(--accent)]">
+            {(op?.recentOutputs ?? []).map((f) => (
+              <li key={f.path}>
+                <span className="text-[var(--muted)]">{f.path}</span>
+              </li>
+            ))}
+            {!op?.recentOutputs?.length ? <li className="text-[var(--muted)]">—</li> : null}
           </ul>
         </div>
       </section>
@@ -156,15 +461,42 @@ export function DashboardHome() {
           {s.logTail ?? "—"}
         </pre>
       </section>
+
+      {s.workspaceRoot ? (
+        <p className="text-center text-xs text-[var(--muted)]">
+          <Link href="/workspace" className="text-sky-400 hover:underline">
+            Workspace overview
+          </Link>
+          {" · "}
+          <Link href="/promotions" className="text-sky-400 hover:underline">
+            Promotions
+          </Link>
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  stale,
+}: {
+  label: string;
+  value: string;
+  stale?: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-4">
+    <div
+      className={`rounded-xl border p-4 ${
+        stale ? "border-amber-600/40 bg-amber-950/20" : "border-[var(--border)] bg-[var(--card)]/80"
+      }`}
+    >
       <div className="text-xs uppercase tracking-wide text-[var(--muted)]">{label}</div>
       <div className="mt-2 text-lg font-medium">{value}</div>
+      {stale ? (
+        <div className="mt-1 text-xs text-amber-400/90">&gt; 7d — run a fresh pass</div>
+      ) : null}
     </div>
   );
 }

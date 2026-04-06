@@ -1,5 +1,5 @@
 import path from "node:path";
-import { loadConfig, type BrainConfig } from "../config.js";
+import { loadConfig, resolveVaultNaming, type BrainConfig } from "../config.js";
 import {
   readActiveBrain,
   findBrainEntry,
@@ -21,7 +21,7 @@ export async function resolveBrainConfig(
 ): Promise<BrainConfig> {
   if (opts.explicitBrainRoot) {
     const r = path.resolve(opts.explicitBrainRoot);
-    return loadConfig(r);
+    return resolveVaultNaming(loadConfig(r));
   }
 
   const ws =
@@ -48,12 +48,14 @@ export async function resolveBrainConfig(
 
     const brainRoot = resolveBrainRootAbsolute(ws, entry);
     const wikiGitPrefix = `${entry.path}/wiki`.replace(/\\/g, "/").replace(/\/$/, "");
-    return loadConfig(brainRoot, {
-      gitRoot: ws,
-      wikiGitPrefix,
-      brainName: entry.name,
-      workspaceRoot: ws,
-    });
+    return resolveVaultNaming(
+      loadConfig(brainRoot, {
+        gitRoot: ws,
+        wikiGitPrefix,
+        brainName: entry.name,
+        workspaceRoot: ws,
+      })
+    );
   }
 
   const legacy = process.env.SECOND_BRAIN_ROOT;
@@ -62,5 +64,5 @@ export async function resolveBrainConfig(
       "Set SECOND_BRAIN_ROOT (single brain) or SECOND_BRAIN_WORKSPACE (multi-brain), or pass --root / --workspace."
     );
   }
-  return loadConfig(path.resolve(legacy));
+  return resolveVaultNaming(loadConfig(path.resolve(legacy)));
 }

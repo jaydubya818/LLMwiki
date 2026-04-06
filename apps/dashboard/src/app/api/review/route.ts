@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
-import { brainPaths, setFileDecision } from "@second-brain/core";
+import { brainPaths, setFileDecision, readReviewState } from "@second-brain/core";
+
+export async function GET() {
+  try {
+    const cfg = await getServerBrainConfig();
+    const state = await readReviewState(brainPaths(cfg.root));
+    return NextResponse.json(state);
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {

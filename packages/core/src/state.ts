@@ -8,6 +8,8 @@ export interface BrainState {
   lastCompileAt?: string;
   lastLintAt?: string;
   lastGraphAt?: string;
+  /** ISO timestamp of last `brain review` / executive weekly */
+  lastReviewAt?: string;
   pendingWikiChanges?: string[];
 }
 

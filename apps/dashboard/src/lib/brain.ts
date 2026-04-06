@@ -14,6 +14,7 @@ function cacheKey(): string {
     process.env.SECOND_BRAIN_WORKSPACE ?? "",
     process.env.SECOND_BRAIN_ROOT ?? "",
     process.env.SECOND_BRAIN_NAME ?? "",
+    process.env.SECOND_BRAIN_VAULT_NAME ?? "",
   ].join("\u241e");
 }
 

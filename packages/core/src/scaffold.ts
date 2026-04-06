@@ -2,6 +2,17 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { brainPaths } from "./paths.js";
 import { ensureGitRepo } from "./git/service.js";
+import {
+  PRODUCTION_CLAUDE_MD,
+  VAULT_README,
+  STARTER_INDEX_MD,
+  STARTER_DASHBOARD_MD,
+  RAW_GETTING_STARTED,
+  WIKI_OPERATING_CADENCE,
+  WIKI_LEADERSHIP_FOCUS,
+  WIKI_GOALS_QUARTER,
+  WIKI_DECISIONS_PLACEHOLDER,
+} from "./scaffold-templates.js";
 
 const RAW_SUB = [
   "inbox",
@@ -72,40 +83,47 @@ export async function scaffoldBrain(
   await fs.mkdir(p.promptsDir, { recursive: true });
   await fs.mkdir(p.templatesDir, { recursive: true });
 
-  await writeIfMissing(p.claudeMd, options?.claudeMarkdown ?? CLAUDE_MD);
   await writeIfMissing(
-    p.readme,
-    `# Second Brain AI — Local LLM Wiki\n\nSee repository-level README for tooling. Brain-specific guide is in \`CLAUDE.md\`.\n`
+    p.claudeMd,
+    options?.claudeMarkdown ?? PRODUCTION_CLAUDE_MD
   );
+  await writeIfMissing(p.readme, VAULT_README);
   await writeIfMissing(
     p.logMd,
     `# Brain log\n\nAppend-only operations log for ingests, compiles, lint, outputs, and video runs.\n\n`
   );
-  await writeIfMissing(
-    p.indexMd,
-    `# Wiki index\n\n${CATALOG_MARKERS}\n\n## Domains\n\n${WIKI_SUB.map((s) => `- **${s}/**`).join("\n")}\n`
-  );
-  await writeIfMissing(
-    p.dashboardMd,
-    `# Dashboard\n\nLiving command center maintained by ingestion + lint.\n\n${DASH_MARKERS}\n\n## Priority topics\n\n_TBD_\n\n## Unresolved gaps / questions\n\n_TBD_\n\n## Suggested next queries\n\n- What changed in wiki this week?\n- Which orphan pages need links?\n`
-  );
+  await writeIfMissing(p.indexMd, STARTER_INDEX_MD);
+  await writeIfMissing(p.dashboardMd, STARTER_DASHBOARD_MD);
   await writeIfMissing(
     p.dailyVideosMd,
     `# Daily videos\n\nAppend-only history of scripts and rendered URLs.\n\n`
   );
   await writeIfMissing(
     path.join(p.envFile),
-    `OPENAI_API_KEY=\nOPENAI_MODEL=gpt-4o-mini\n# HEYGEN_API_KEY=\n# HEYGEN_API_BASE=https://api.heygen.com/v2\n# SECOND_BRAIN_ROOT is set by CLI cwd/root\nDASHBOARD_PORT=3847\n`
+    `OPENAI_API_KEY=\nOPENAI_MODEL=gpt-4o-mini\n# HEYGEN_API_KEY=\n# HEYGEN_API_BASE=https://api.heygen.com/v2\n# Exact Obsidian vault name for obsidian:// links (optional; else folder basename or SecondBrain fallback)\n# SECOND_BRAIN_VAULT_NAME=\n# SECOND_BRAIN_ROOT is set by CLI cwd/root\nDASHBOARD_PORT=3847\n`
   );
   await writeIfMissing(
     path.join(root, ".gitignore"),
     `.env\n.brain/search-index.json\n.brain/graph.json\nnode_modules\n`
   );
 
-  const sampleRaw = path.join(p.raw, "inbox", "hello-brain.md");
+  await writeIfMissing(path.join(p.raw, "inbox", "getting-started.md"), RAW_GETTING_STARTED);
+
   await writeIfMissing(
-    sampleRaw,
-    `# Hello Second Brain\n\nThis is sample immutable source material in raw/inbox.\n\n- Ingest will synthesize into wiki pages.\n- Edit freely here; AI should not mutate raw/.\n`
+    path.join(p.wiki, "topics", "operating-cadence.md"),
+    WIKI_OPERATING_CADENCE
+  );
+  await writeIfMissing(
+    path.join(p.wiki, "work", "work-leadership-focus.md"),
+    WIKI_LEADERSHIP_FOCUS
+  );
+  await writeIfMissing(
+    path.join(p.wiki, "goals", "goals-current-quarter.md"),
+    WIKI_GOALS_QUARTER
+  );
+  await writeIfMissing(
+    path.join(p.wiki, "decisions", "decisions-placeholder.md"),
+    WIKI_DECISIONS_PLACEHOLDER
   );
 
   await writePrompts(p);
@@ -120,9 +138,6 @@ export async function scaffoldBrain(
   }
 }
 
-const CATALOG_MARKERS = `<!-- BRAIN_CATALOG_START -->\n_Initial catalog — run \`brain ingest\`._\n<!-- BRAIN_CATALOG_END -->`;
-const DASH_MARKERS = `<!-- BRAIN_ACTIVITY_START -->\n_No runs yet._\n<!-- BRAIN_ACTIVITY_END -->`;
-
 async function writeIfMissing(file: string, content: string): Promise<void> {
   try {
     await fs.access(file);
@@ -134,12 +149,18 @@ async function writeIfMissing(file: string, content: string): Promise<void> {
 
 async function writePrompts(p: ReturnType<typeof brainPaths>): Promise<void> {
   const files: Record<string, string> = {
-    "ingest.md": "Ingest: synthesize sources into wiki pages with stable slugs.",
-    "compile.md": "Compile: refresh graph/search indexes; keep prose stable.",
-    "ask.md": "Ask: answer from retrieved wiki context with citations.",
-    "lint.md": "Lint: find orphans, staleness, weak links, contradictions.",
-    "review.md": "Review: weekly executive narrative from dashboard + index.",
-    "video.md": "Video: 150w first-person script grounded in wiki.",
+    "ingest.md":
+      "Role: wiki maintainer. Input: raw path + text. Output plan: domains, slugs, summaries, index lines, dashboard bullets. Prefer updating one primary page; stable kebab slugs; cite sources.",
+    "compile.md":
+      "Role: indexer only. Do not change wiki prose. Rebuild graph + search JSON from current markdown.",
+    "ask.md":
+      "Answer from retrieved wiki snippets; cite paths; flag uncertainty; suggest follow-up pages to create.",
+    "lint.md":
+      "Orphans, stale last_updated, missing wikilinks, possible contradictions — actionable findings only.",
+    "review.md":
+      "Executive weekly: Snapshot, Wins, Risks, Decisions needed, Next week focus — grounded in dashboard + INDEX.",
+    "video.md":
+      "~150 words, first person, one reflective question, grounded in wiki; no hype; avoid recent daily topics.",
   };
   for (const [name, body] of Object.entries(files)) {
     await writeIfMissing(path.join(p.promptsDir, name), `# ${name}\n\n${body}\n`);
@@ -161,50 +182,3 @@ async function writeTemplates(p: ReturnType<typeof brainPaths>): Promise<void> {
   }
 }
 
-const CLAUDE_MD = `# Second Brain AI Operating Schema
-
-## Purpose
-Local-first, AI-maintained knowledge base: raw inputs → persistent wiki → durable outputs.
-
-## raw/
-Immutable sources. Never rewrite files here.
-
-## wiki/
-AI-maintained synthesis. Prefer updating pages over duplicating. Stable kebab-case names.
-
-## outputs/
-Generated artifacts; promote high-value work back into wiki/ per promotion rules in README.
-
-## videos/
-Scripts + append-only daily_videos.md history.
-
-## .brain/
-Caches, indexes, runs — operational, not durable knowledge.
-
-## Priority domains
-Work leadership, projects, architecture, AI systems, research, writing, goals, health, life systems, decisions, learning, people.
-
-## Page standards
-- YAML frontmatter (title, type, domain, last_updated, sources, tags)
-- One-paragraph executive summary first
-- Sections + [[wikilinks]] + Sources
-- Readable in Obsidian without plugins
-
-## Ingest rules
-Scan new/changed files in raw/, extract text (md, txt, json, csv, pdf), hash + cache, synthesize into wiki, update INDEX/dashboard markers, append log.
-
-## Git trust boundary
-Review wiki changes via diff before commit. Use review-state for per-file approve/reject when needed.
-
-## Dashboard expectations
-Surface recency, orphans, contradictions, suggested actions — operational, not decorative.
-
-## MCP expectations
-Expose narrow local tools for search/read/graph/trigger operations.
-
-## Daily video rules
-~150 words, first person, grounded in wiki, avoid topics from last 7 days in daily_videos.md, optional HeyGen when keys exist.
-
-## Writing style
-Concise, structured, source-grounded, no fluff.
-`;

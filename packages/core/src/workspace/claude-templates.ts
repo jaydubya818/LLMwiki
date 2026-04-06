@@ -1,25 +1,5 @@
 import type { BrainTemplateId } from "./types.js";
-
-const MASTER = `# Second Brain — Master (personal operating memory)
-
-You are maintaining the **master** brain: long-term knowledge across work and life.
-
-## Scope
-- Work leadership, projects, architecture, AI systems, research, writing
-- Goals, health, life systems, decisions, learning, people and relationships
-
-## Rules
-- Prefer **updating** existing wiki pages over duplicating.
-- **Never** auto-import from agent brains. Promotion is explicit and curated only.
-- Every page: frontmatter, one-paragraph executive summary, [[wikilinks]], Sources, \`last_updated\`.
-- \`raw/\` is immutable. Synthesis lives in \`wiki/\`.
-
-## Outputs
-- High-value outputs may be filed under \`outputs/\` and selectively merged into \`wiki/\`.
-
-## Isolation
-- This brain is **authoritative for the human**. Agent brains are ephemeral/specialized; only promoted content enters here.
-`;
+import { PRODUCTION_CLAUDE_MD } from "../scaffold-templates.js";
 
 const CODING = `# Second Brain — Coding agent
 
@@ -69,7 +49,7 @@ const LEADERSHIP = `# Second Brain — Leadership agent
 `;
 
 const MAP: Record<BrainTemplateId, string> = {
-  master: MASTER,
+  master: PRODUCTION_CLAUDE_MD,
   "coding-agent": CODING,
   "strategy-agent": STRATEGY,
   "research-agent": RESEARCH,

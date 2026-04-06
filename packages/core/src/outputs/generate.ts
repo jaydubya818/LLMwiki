@@ -73,13 +73,16 @@ export async function runStructuredOutput(
 
   const dir = path.join(paths.outputs, KIND_FOLDER[kind]);
   await fs.mkdir(dir, { recursive: true });
-  const fname = `${kind}-${new Date().toISOString().slice(0, 10)}-${slug(topic)}.md`;
+  const ts = new Date().toISOString();
+  const hhmmss = ts.slice(11, 19).replace(/:/g, "");
+  const fname = `${kind}-${ts.slice(0, 10)}-${hhmmss}-${slug(topic)}.md`;
   const full = path.join(dir, fname);
   const md = [
     "---",
     `title: ${kind} — ${topic}`,
     `kind: ${kind}`,
     `generated: ${new Date().toISOString()}`,
+    `brain_operation: structured output`,
     `sources:`,
     ...hits.map((h) => `  - ${h.path}`),
     "---",

@@ -3,7 +3,7 @@ import path from "node:path";
 import matter from "gray-matter";
 import type { BrainConfig } from "../config.js";
 import { brainPaths } from "../paths.js";
-import { loadConfig } from "../config.js";
+import { loadConfig, resolveVaultNaming } from "../config.js";
 import {
   findBrainEntry,
   resolveBrainRootAbsolute,
@@ -99,12 +99,14 @@ export async function buildBrainConfigForName(
   if (!entry) throw new Error(`Unknown brain ${brainName}`);
   const brainRoot = resolveBrainRootAbsolute(path.resolve(workspaceRoot), entry);
   const wikiGitPrefix = `${entry.path}/wiki`.replace(/\\/g, "/").replace(/\/$/, "");
-  return loadConfig(brainRoot, {
-    gitRoot: path.resolve(workspaceRoot),
-    wikiGitPrefix,
-    brainName: entry.name,
-    workspaceRoot: path.resolve(workspaceRoot),
-  });
+  return resolveVaultNaming(
+    loadConfig(brainRoot, {
+      gitRoot: path.resolve(workspaceRoot),
+      wikiGitPrefix,
+      brainName: entry.name,
+      workspaceRoot: path.resolve(workspaceRoot),
+    })
+  );
 }
 
 /** Re-export for CLI */

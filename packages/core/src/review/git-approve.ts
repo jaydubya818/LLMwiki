@@ -5,8 +5,11 @@ import type { BrainPaths } from "../paths.js";
 import {
   stageWikiAndCommitForBrain,
   discardWikiFileForBrain,
+  getWikiStatusFilesForBrain,
 } from "../git/service.js";
 import { appendLog } from "../log-append.js";
+import { writeState } from "../state.js";
+import { suggestWikiCommitMessage } from "../ops/suggest-commit.js";
 
 export type FileDecision = "pending" | "approved" | "rejected";
 
@@ -63,10 +66,13 @@ export async function applyReviewDecisions(
   if (approved.length === 0) {
     return { committed: false, message: "No approved files to commit." };
   }
-  const message = `wiki(${cfg.brainName}): approve ${approved.length} pages`;
+  const suggested = await suggestWikiCommitMessage(paths);
+  const message = `${suggested} | approved ${approved.length} path(s)`;
   await stageWikiAndCommitForBrain(cfg, message, approved);
   await writeReviewState(paths, { updatedAt: new Date().toISOString(), files: {} });
   await appendLog(paths, `approve: committed ${approved.join(", ")}`);
+  const pending = (await getWikiStatusFilesForBrain(cfg)).map((f) => f.path);
+  await writeState(paths, { pendingWikiChanges: pending });
   return { committed: true, message };
 }
 
@@ -77,4 +83,6 @@ export async function commitAllWikiForBrain(
 ): Promise<void> {
   await stageWikiAndCommitForBrain(cfg, message);
   await appendLog(paths, `approve: full wiki commit — ${message}`);
+  const pending = (await getWikiStatusFilesForBrain(cfg)).map((f) => f.path);
+  await writeState(paths, { pendingWikiChanges: pending });
 }

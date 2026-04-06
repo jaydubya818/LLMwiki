@@ -34,6 +34,10 @@ import {
   addPromotionCandidate,
   searchAcrossBrains,
   readActiveBrain,
+  suggestWikiCommitMessage,
+  runDoctor,
+  formatDoctorText,
+  type DoctorSavedArtifacts,
 } from "@second-brain/core";
 import type { OutputKind, BrainTemplateId } from "@second-brain/core";
 
@@ -238,6 +242,47 @@ program
   });
 
 program
+  .command("doctor")
+  .description("Health and environment diagnostic for the active vault")
+  .option("--json", "Print machine-readable JSON")
+  .option("--no-save", "Do not write outputs/reports/doctor-*.md or .brain/last-doctor.json")
+  .action(async (o: { json?: boolean; save?: boolean }) => {
+    let err: string | undefined;
+    let cfg: Awaited<ReturnType<typeof resolveBrainConfig>> | null = null;
+    try {
+      cfg = await getCfg();
+    } catch (e) {
+      err = (e as Error).message ?? String(e);
+    }
+    const noSave = o.save === false;
+    const saved: DoctorSavedArtifacts = { cacheUpdated: false };
+    const report = await runDoctor(cfg, err, {
+      saveReport: !noSave,
+      savedArtifacts: saved,
+    });
+    if (o.json) {
+      console.log(JSON.stringify(report, null, 2));
+      if (noSave) {
+        console.error("brain doctor: --no-save — no report or last-doctor.json written.");
+      }
+    } else {
+      console.log(formatDoctorText(report));
+      if (noSave) {
+        console.error("\n--no-save: skipped markdown report and .brain/last-doctor.json.");
+      } else if (cfg) {
+        if (saved.markdownPath) {
+          console.error(`\nReport: ${saved.markdownPath}`);
+        }
+        if (saved.lastDoctorJsonPath) {
+          console.error(
+            `Cache:  ${saved.lastDoctorJsonPath} (${saved.cacheUpdated ? "updated" : "not updated"})`
+          );
+        }
+      }
+    }
+  });
+
+program
   .command("init")
   .description("Legacy: scaffold a single brain folder")
   .option("--target <path>", "Directory (default: ./second-brain)")
@@ -246,8 +291,19 @@ program
       cmdOpts.target ?? path.join(process.cwd(), "second-brain")
     );
     await scaffoldBrain(target);
-    console.log(`Initialized brain at ${target}`);
-    console.log(`export SECOND_BRAIN_ROOT=${target}`);
+    console.log(`\nInitialized vault at ${target}`);
+    console.log(`export SECOND_BRAIN_ROOT=${target}\n`);
+    console.log("First-run checklist:");
+    console.log("  1. Export SECOND_BRAIN_ROOT (see above) or pass -r on every command.");
+    console.log("  2. Edit CLAUDE.md to match how you work.");
+    console.log("  3. Add notes to raw/inbox/ (see raw/inbox/getting-started.md).");
+    console.log("  4. Run: brain ingest");
+    console.log("  5. Run: brain diff — review every wiki path");
+    console.log("  6. Approve in dashboard Diff UI, then: brain approve");
+    console.log("  7. Run: brain dashboard — open the URL shown");
+    console.log("  8. Weekly: ingest → review → lint → approve → optional video");
+    console.log("  9. If setup feels wrong: brain doctor");
+    console.log(`\nMore detail: ${path.join(target, "README.md")}\n`);
   });
 
 program
@@ -300,6 +356,7 @@ program
   const res = await runDailyVideo(cfg);
   console.log(`Script: ${res.scriptPath}`);
   if (res.videoUrl) console.log(`Video: ${res.videoUrl}`);
+  if (res.videoError) console.error(`HeyGen: ${res.videoError} (script still saved)`);
 });
 
 program
@@ -327,11 +384,16 @@ program
     const cfg = await getCfg();
     const paths = brainPaths(cfg.root);
     if (o.all) {
-      await commitAllWikiForBrain(
-        cfg,
-        paths,
-        o.message ?? `wiki(${cfg.brainName}): update ${new Date().toISOString()}`
-      );
+      let msg = o.message;
+      if (!msg) {
+        try {
+          msg = await suggestWikiCommitMessage(paths);
+        } catch (e) {
+          console.error(e);
+          msg = "Update wiki content";
+        }
+      }
+      await commitAllWikiForBrain(cfg, paths, msg);
       console.log("Committed wiki for active brain");
       return;
     }

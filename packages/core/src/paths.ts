@@ -24,6 +24,7 @@ export function brainPaths(root: string) {
     promptsDir: path.join(r, ".brain", "prompts"),
     templatesDir: path.join(r, ".brain", "templates"),
     reviewStateJson: path.join(r, ".brain", "review-state.json"),
+    lastDoctorJson: path.join(r, ".brain", "last-doctor.json"),
     indexMd: path.join(r, "wiki", "INDEX.md"),
     dashboardMd: path.join(r, "wiki", "dashboard.md"),
     dailyVideosMd: path.join(r, "videos", "daily_videos.md"),

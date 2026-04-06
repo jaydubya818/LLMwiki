@@ -187,7 +187,8 @@ export async function runLint(cfg: BrainConfig): Promise<LintReport> {
 
   const outDir = path.join(paths.outputs, "health-checks");
   await fs.mkdir(outDir, { recursive: true });
-  const fname = `health-${report.generatedAt.slice(0, 10)}.md`;
+  const hhmmss = report.generatedAt.slice(11, 19).replace(/:/g, "");
+  const fname = `health-${report.generatedAt.slice(0, 10)}-${hhmmss}.md`;
   const md = renderLintMarkdown(report);
   await fs.writeFile(path.join(outDir, fname), md, "utf8");
 
@@ -207,7 +208,9 @@ function renderLintMarkdown(report: LintReport): string {
   const lines = [
     "---",
     `title: Wiki health check`,
+    `kind: health-check`,
     `generated: ${report.generatedAt}`,
+    `findings_count: ${report.findings.length}`,
     "---",
     "",
     "## Findings",

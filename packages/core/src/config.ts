@@ -1,4 +1,8 @@
+import fs from "node:fs/promises";
 import path from "node:path";
+
+/** How Obsidian vault name was resolved for `obsidian://` links */
+export type VaultNameSource = "env" | "file" | "basename" | "default";
 
 export interface BrainConfig {
   /** Absolute path to this brain instance (raw/, wiki/, …) */
@@ -11,6 +15,11 @@ export interface BrainConfig {
   brainName: string;
   /** Workspace root when using brains/master | brains/agents/* layout */
   workspaceRoot?: string;
+  /**
+   * Obsidian vault name for deep links (`SECOND_BRAIN_VAULT_NAME`, `.brain/settings.json`, folder basename, or fallback).
+   */
+  vaultName: string;
+  vaultNameSource: VaultNameSource;
   openaiApiKey?: string;
   openaiBaseUrl?: string;
   openaiModel?: string;
@@ -43,6 +52,7 @@ export function loadConfig(
   const wikiGitPrefix = (overrides?.wikiGitPrefix ?? "wiki")
     .replace(/\\/g, "/")
     .replace(/\/$/, "");
+  const vn = pickVaultNameSync(r);
   return {
     root: r,
     gitRoot,
@@ -51,6 +61,8 @@ export function loadConfig(
     workspaceRoot: overrides?.workspaceRoot
       ? path.resolve(overrides.workspaceRoot)
       : undefined,
+    vaultName: vn.name,
+    vaultNameSource: vn.source,
     openaiApiKey: process.env.OPENAI_API_KEY,
     openaiBaseUrl: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
     openaiModel: process.env.OPENAI_MODEL ?? "gpt-4o-mini",
@@ -61,10 +73,48 @@ export function loadConfig(
   };
 }
 
+function pickVaultNameSync(brainRoot: string): { name: string; source: VaultNameSource } {
+  const env = process.env.SECOND_BRAIN_VAULT_NAME?.trim();
+  if (env) return { name: env, source: "env" };
+  const base = path.basename(path.resolve(brainRoot));
+  if (base && base !== ".") {
+    return { name: base, source: "basename" };
+  }
+  return { name: "SecondBrain", source: "default" };
+}
+
+/**
+ * Re-resolve vault name after async reads: `.brain/settings.json` (`obsidianVaultName`) when env is unset.
+ */
+export async function resolveVaultNaming(cfg: BrainConfig): Promise<BrainConfig> {
+  const env = process.env.SECOND_BRAIN_VAULT_NAME?.trim();
+  if (env) {
+    return { ...cfg, vaultName: env, vaultNameSource: "env" };
+  }
+  try {
+    const settingsPath = path.join(cfg.root, ".brain", "settings.json");
+    const raw = await fs.readFile(settingsPath, "utf8");
+    const j = JSON.parse(raw) as { obsidianVaultName?: string };
+    const fileName = j.obsidianVaultName?.trim();
+    if (fileName) {
+      return { ...cfg, vaultName: fileName, vaultNameSource: "file" };
+    }
+  } catch {
+    /* missing or invalid */
+  }
+  return cfg;
+}
+
 /** Re-apply process.env after loading a brain-specific `.env`. */
 export function applyEnvToConfig(cfg: BrainConfig): BrainConfig {
+  const envVault = process.env.SECOND_BRAIN_VAULT_NAME?.trim();
+  const vn =
+    envVault != null && envVault.length > 0
+      ? { vaultName: envVault, vaultNameSource: "env" as const }
+      : { vaultName: cfg.vaultName, vaultNameSource: cfg.vaultNameSource };
   return {
     ...cfg,
+    ...vn,
     openaiApiKey: process.env.OPENAI_API_KEY ?? cfg.openaiApiKey,
     openaiBaseUrl:
       process.env.OPENAI_BASE_URL ?? cfg.openaiBaseUrl ?? "https://api.openai.com/v1",

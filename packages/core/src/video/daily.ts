@@ -7,10 +7,12 @@ import { brainPaths } from "../paths.js";
 import { createLlm } from "../llm/factory.js";
 import { appendLog } from "../log-append.js";
 import { writeRun } from "../runs.js";
+import { renderScriptWithHeyGen } from "./heygen-client.js";
 
 export async function runDailyVideo(cfg: BrainConfig): Promise<{
   scriptPath: string;
   videoUrl?: string;
+  videoError?: string;
 }> {
   const paths = brainPaths(cfg.root);
   const wikiPattern = path.join(paths.wiki, "**/*.md").replace(/\\/g, "/");
@@ -66,8 +68,14 @@ export async function runDailyVideo(cfg: BrainConfig): Promise<{
   );
 
   let videoUrl: string | undefined;
+  let videoError: string | undefined;
+  const heygenTrace: string[] = [];
   if (cfg.heygenApiKey) {
-    videoUrl = await tryHeyGen(script, cfg.heygenApiKey);
+    const hg = await renderScriptWithHeyGen(script, cfg.heygenApiKey, heygenTrace);
+    videoUrl = hg.videoUrl;
+    videoError = hg.error;
+  } else {
+    heygenTrace.push("[heygen] skip: HEYGEN_API_KEY not set");
   }
 
   const entry = [
@@ -76,9 +84,9 @@ export async function runDailyVideo(cfg: BrainConfig): Promise<{
     "",
     `**Brief:** ${script.split(/\n+/)[0]?.slice(0, 240)}`,
     "",
-    `**Video:** ${videoUrl ?? "pending / not configured"}`,
+    `**Video:** ${videoUrl ?? (videoError ? `render failed — ${videoError}` : "not configured (script only)")}`,
     "",
-    `**Source Pages:** [[${path.basename(fallbackRef, ".md")}]]`,
+    `**Source pages:** [[${path.basename(fallbackRef, ".md")}]]`,
     "",
   ].join("\n");
 
@@ -94,11 +102,16 @@ export async function runDailyVideo(cfg: BrainConfig): Promise<{
   await writeRun(paths, {
     kind: "video",
     ok: true,
-    summary: `daily video script ${dayStamp}`,
-    details: { scriptPath: path.relative(cfg.root, scriptPath), videoUrl },
+    summary: `daily video script ${dayStamp}${videoUrl ? " + HeyGen URL" : videoError ? " (HeyGen error)" : ""}`,
+    details: {
+      scriptPath: path.relative(cfg.root, scriptPath),
+      videoUrl,
+      videoError,
+      heygenTrace: heygenTrace.slice(-12),
+    },
   });
 
-  return { scriptPath, videoUrl };
+  return { scriptPath, videoUrl, videoError };
 }
 
 async function loadRecentTopics(dailyMd: string): Promise<Set<string>> {
@@ -123,38 +136,4 @@ function slug(t: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-async function tryHeyGen(script: string, apiKey: string): Promise<string | undefined> {
-  const base = process.env.HEYGEN_API_BASE ?? "https://api.heygen.com/v2";
-  try {
-    const res = await fetch(`${base}/video/generate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": apiKey,
-      },
-      body: JSON.stringify({
-        video_inputs: [{ character: { type: "avatar" }, voice: { type: "text", text: script } }],
-      }),
-    });
-    if (!res.ok) return undefined;
-    const data = (await res.json()) as { data?: { video_id?: string } };
-    const id = data?.data?.video_id;
-    if (!id) return undefined;
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 3000));
-      const st = await fetch(`${base}/video_status.get?video_id=${id}`, {
-        headers: { "X-Api-Key": apiKey },
-      });
-      if (st.ok) {
-        const js = (await st.json()) as { data?: { video_url?: string; status?: string } };
-        if (js.data?.video_url) return js.data.video_url;
-        if (js.data?.status === "failed") return undefined;
-      }
-    }
-  } catch {
-    return undefined;
-  }
-  return undefined;
 }

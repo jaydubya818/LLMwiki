@@ -5,6 +5,7 @@ import { brainPaths } from "../paths.js";
 import { createLlm } from "../llm/factory.js";
 import { appendLog } from "../log-append.js";
 import { writeRun } from "../runs.js";
+import { writeState } from "../state.js";
 
 export async function runExecutiveReview(cfg: BrainConfig): Promise<string> {
   const paths = brainPaths(cfg.root);
@@ -40,14 +41,17 @@ export async function runExecutiveReview(cfg: BrainConfig): Promise<string> {
 
   const dir = path.join(paths.outputs, "reviews");
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(
-    dir,
-    `weekly-${new Date().toISOString().slice(0, 10)}.md`
-  );
+  const stamp = new Date().toISOString();
+  const day = stamp.slice(0, 10);
+  const hhmmss = stamp.slice(11, 19).replace(/:/g, "");
+  const file = path.join(dir, `executive-weekly-${day}-${hhmmss}.md`);
   const wrapped = [
     "---",
-    `title: Weekly executive review`,
-    `generated: ${new Date().toISOString()}`,
+    `title: Executive weekly review`,
+    `kind: weekly-review`,
+    `generated: ${stamp}`,
+    `brain_operation: executive synthesis from dashboard + INDEX`,
+    `tags: [weekly-review, ops]`,
     "---",
     "",
     md,
@@ -55,10 +59,11 @@ export async function runExecutiveReview(cfg: BrainConfig): Promise<string> {
   ].join("\n");
   await fs.writeFile(file, wrapped, "utf8");
   await appendLog(paths, `review: ${path.relative(cfg.root, file)}`);
+  await writeState(paths, { lastReviewAt: stamp });
   await writeRun(paths, {
     kind: "review",
     ok: true,
-    summary: "weekly review generated",
+    summary: `weekly review → ${path.basename(file)}`,
     details: { path: path.relative(cfg.root, file) },
   });
   return file;

@@ -1,4 +1,6 @@
 export * from "./config.js";
+export * from "./doctor/run-doctor.js";
+export * from "./doctor/cache.js";
 export * from "./paths.js";
 export * from "./state.js";
 export * from "./hash-store.js";
@@ -20,6 +22,8 @@ export type { OutputKind } from "./outputs/generate.js";
 export * from "./video/daily.js";
 export * from "./git/service.js";
 export * from "./review/git-approve.js";
+export * from "./ops/suggest-commit.js";
+export * from "./ops/recent-artifacts.js";
 export * from "./llm/types.js";
 export * from "./llm/factory.js";
 export * from "./workspace/types.js";
