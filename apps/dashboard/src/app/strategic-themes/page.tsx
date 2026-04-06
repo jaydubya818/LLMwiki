@@ -17,13 +17,50 @@ type Theme = {
 
 export default function StrategicThemesPage() {
   const [themes, setThemes] = useState<Theme[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     void (async () => {
-      const r = await fetch("/api/strategic-themes");
-      const j = await r.json();
-      setThemes(j.themes ?? []);
+      setLoading(true);
+      setFetchError(null);
+      try {
+        const r = await fetch("/api/strategic-themes");
+        let j: { themes?: Theme[]; error?: string } = {};
+        try {
+          j = (await r.json()) as typeof j;
+        } catch (e) {
+          console.error("[strategic-themes] JSON:", e);
+          if (!cancelled) {
+            setFetchError("Invalid response from server.");
+            setThemes([]);
+          }
+          return;
+        }
+        if (!cancelled) {
+          if (!r.ok) {
+            setFetchError(typeof j.error === "string" ? j.error : `Load failed (HTTP ${r.status})`);
+            setThemes([]);
+          } else {
+            setThemes(Array.isArray(j.themes) ? j.themes : []);
+          }
+        }
+      } catch (e) {
+        console.error("[strategic-themes] fetch:", e);
+        if (!cancelled) {
+          setFetchError(e instanceof Error ? e.message : "Network error");
+          setThemes([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const grouped = {
@@ -47,6 +84,9 @@ export default function StrategicThemesPage() {
         </div>
       </header>
 
+      {loading ? <p className="text-sm text-[var(--muted)]">Loading themes…</p> : null}
+      {fetchError ? <p className="text-sm text-red-400">{fetchError}</p> : null}
+
       {(["active", "emerging", "fading"] as const).map((bucket) => (
         <section key={bucket}>
           <h2 className="text-xs font-semibold uppercase tracking-widest text-[var(--muted)]">{bucket}</h2>
@@ -61,13 +101,15 @@ export default function StrategicThemesPage() {
                     <span className="text-xs text-[var(--muted)]">strength {t.signalStrength}/10</span>
                   </div>
                   <p className="mt-1 text-xs text-[var(--muted)]">{t.description}</p>
-                  <p className="mt-2 text-xs text-sky-200/80">{t.recurrenceNotes[0]}</p>
+                  <p className="mt-2 text-xs text-sky-200/80">
+                    {t.recurrenceNotes?.length ? t.recurrenceNotes[0] : "—"}
+                  </p>
                   {t.relatedDomains.length ? (
                     <p className="mt-2 text-xs text-[var(--muted)]">Domains: {t.relatedDomains.join(", ")}</p>
                   ) : null}
                   {t.relatedPages.slice(0, 6).map((p) => (
                     <Link
-                      key={p}
+                      key={`page-${p}`}
                       href={`/wiki?path=${encodeURIComponent(p)}`}
                       className="mr-2 mt-1 inline-block font-mono text-xs text-sky-400"
                     >
@@ -76,7 +118,7 @@ export default function StrategicThemesPage() {
                   ))}
                   {t.relatedDecisions.slice(0, 4).map((p) => (
                     <Link
-                      key={p}
+                      key={`decision-${p}`}
                       href={`/wiki?path=${encodeURIComponent(p)}`}
                       className="mr-2 mt-1 inline-block font-mono text-xs text-amber-200/80"
                     >

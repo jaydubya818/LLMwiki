@@ -17,11 +17,33 @@ type Hint = {
 export default function DecisionSunsetPage() {
   const [hints, setHints] = useState<Hint[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const r = await fetch("/api/decision-sunset");
-    const j = await r.json();
-    setHints(j.hints ?? []);
+    setLoadError(null);
+    try {
+      const r = await fetch("/api/decision-sunset");
+      let j: { hints?: Hint[]; error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[decision-sunset] load JSON:", e);
+        setLoadError("Invalid response from server.");
+        setHints([]);
+        return;
+      }
+      if (!r.ok) {
+        setLoadError(typeof j.error === "string" ? j.error : `Load failed (HTTP ${r.status})`);
+        setHints([]);
+        return;
+      }
+      setHints(Array.isArray(j.hints) ? j.hints : []);
+    } catch (e) {
+      console.error("[decision-sunset] load:", e);
+      setLoadError(e instanceof Error ? e.message : "Network error");
+      setHints([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -29,13 +51,31 @@ export default function DecisionSunsetPage() {
   }, [load]);
 
   async function setStatus(id: string, status: string) {
+    setUpdateError(null);
     const rationale = (notes[id] ?? "").trim();
-    await fetch("/api/decision-sunset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status, rationale: rationale || undefined }),
-    });
-    void load();
+    try {
+      const r = await fetch("/api/decision-sunset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status, rationale: rationale || undefined }),
+      });
+      let j: { error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[decision-sunset] update JSON:", e);
+        setUpdateError(r.ok ? "Invalid response from server." : `HTTP ${r.status}`);
+        return;
+      }
+      if (!r.ok) {
+        setUpdateError(typeof j.error === "string" ? j.error : `Update failed (HTTP ${r.status})`);
+        return;
+      }
+      void load();
+    } catch (e) {
+      console.error("[decision-sunset] update:", e);
+      setUpdateError(e instanceof Error ? e.message : "Network error");
+    }
   }
 
   return (
@@ -50,6 +90,9 @@ export default function DecisionSunsetPage() {
           <Link href="/executive">Executive</Link>
         </div>
       </header>
+
+      {loadError ? <p className="text-sm text-red-400">{loadError}</p> : null}
+      {updateError ? <p className="text-sm text-amber-300">{updateError}</p> : null}
 
       <ul className="space-y-4">
         {hints.map((h) => (

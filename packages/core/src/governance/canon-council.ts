@@ -175,7 +175,7 @@ export async function buildCanonCouncil(cfg: BrainConfig): Promise<CanonCouncilF
     });
   }
 
-  for (const a of alerts.alerts) {
+  for (const a of alerts?.alerts ?? []) {
     if (a.status !== "new" && a.status !== "seen") continue;
     if (!boardPaths.has(a.pagePath)) continue;
     push({
@@ -218,15 +218,16 @@ export async function buildCanonCouncil(cfg: BrainConfig): Promise<CanonCouncilF
   }
 
   const since = cutoffMs();
-  for (const r of res.items) {
+  for (const r of res?.items ?? []) {
     const touched = Date.parse(r.resolvedAt);
     if (Number.isNaN(touched) || touched < since) continue;
     const canonTouch = r.relatedPagePaths.some((p) => boardPaths.has(p));
     if (!canonTouch) continue;
+    const resWikiPath = r.relatedPagePaths[0] ?? "wiki/INDEX.md";
     push({
       id: `cc-res-${r.id}`,
       kind: "recent_resolution",
-      path: r.relatedPagePaths[0] ?? "wiki/",
+      path: resWikiPath,
       title: r.issueSummary.slice(0, 80),
       canonicalState: "human_resolution",
       warnings: r.relatedPagePaths.filter((p) => boardPaths.has(p)),
@@ -236,7 +237,7 @@ export async function buildCanonCouncil(cfg: BrainConfig): Promise<CanonCouncilF
       priorityScore: 55,
       quickLinks: [
         { label: "Resolutions", href: "/resolutions" },
-        { label: "Wiki", href: `/wiki?path=${encodeURIComponent(r.relatedPagePaths[0] ?? "wiki/INDEX.md")}` },
+        { label: "Wiki", href: `/wiki?path=${encodeURIComponent(resWikiPath)}` },
       ],
     });
   }

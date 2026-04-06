@@ -25,7 +25,7 @@ export interface ReviewWorkloadPlan {
 function uniqueByPath(items: { path: string; title: string; score: number; why: string }[], limit: number) {
   const seen = new Set<string>();
   const out: typeof items = [];
-  for (const it of items.sort((a, b) => b.score - a.score)) {
+  for (const it of [...items].sort((a, b) => b.score - a.score)) {
     if (seen.has(it.path)) continue;
     seen.add(it.path);
     out.push(it);
@@ -125,7 +125,6 @@ export async function writeReviewWorkloadMarkdown(
   cfg: BrainConfig,
   plan: ReviewWorkloadPlan
 ): Promise<string> {
-  const paths = brainPaths(cfg.root);
   const stamp = new Date().toISOString().replace(/:/g, "").replace(/\.\d{3}Z$/, "");
   const day = stamp.slice(0, 10);
   const fname =
@@ -151,8 +150,9 @@ export async function writeReviewWorkloadMarkdown(
     ),
     "",
   ];
-  await fs.mkdir(paths.reviewsDir, { recursive: true });
   const rel = path.join("outputs", "reviews", fname);
-  await fs.writeFile(path.join(cfg.root, rel), lines.join("\n"), "utf8");
+  const filePath = path.join(cfg.root, rel);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, lines.join("\n"), "utf8");
   return rel.split(path.sep).join("/");
 }

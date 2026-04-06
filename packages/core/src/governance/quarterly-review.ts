@@ -156,8 +156,11 @@ export async function listQuarterlyReviewFiles(cfg: BrainConfig, limit = 20): Pr
   const scored = await Promise.all(
     files.map(async (abs) => {
       const base = path.basename(abs);
-      let key = quarterlyReviewSortKey(base);
-      if (!key) {
+      const q = quarterlyReviewSortKey(base);
+      let key: number;
+      if (q) {
+        key = q * 1e8;
+      } else {
         try {
           const st = await fs.stat(abs);
           key = st.mtimeMs;

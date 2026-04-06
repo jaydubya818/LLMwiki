@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
+import { internalServerError } from "@/lib/api-route-helpers";
 import { brainPaths, readReviewDebt } from "@second-brain/core";
 
 export async function GET() {
@@ -7,8 +8,11 @@ export async function GET() {
     const cfg = await getServerBrainConfig();
     const paths = brainPaths(cfg.root);
     const d = await readReviewDebt(paths);
-    return NextResponse.json(d ?? { error: "missing — run lint / operational refresh" });
+    if (!d) {
+      return NextResponse.json({ error: "missing — run lint / operational refresh" }, { status: 404 });
+    }
+    return NextResponse.json(d);
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }

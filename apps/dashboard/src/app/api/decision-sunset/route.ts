@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
+import { internalServerError } from "@/lib/api-route-helpers";
 import {
   brainPaths,
   readDecisionSunset,
@@ -16,7 +17,7 @@ export async function GET() {
     const f = await readDecisionSunset(paths);
     return NextResponse.json(f ?? { hints: [], version: 1 });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }
 
@@ -32,8 +33,7 @@ export async function POST(req: Request) {
     if (!body.id || !body.status) {
       return NextResponse.json({ error: "id and status required" }, { status: 400 });
     }
-    const before = (await readDecisionSunset(paths))?.hints.find((h) => h.id === body.id);
-    const rec = await updateDecisionSunsetStatus(paths, body.id, body.status);
+    const { rec, before } = await updateDecisionSunsetStatus(paths, body.id, body.status);
     if (!rec) return NextResponse.json({ error: "not found" }, { status: 404 });
     if (before && before.status !== rec.status) {
       const settings = await readGovernanceSettings(paths);
@@ -57,6 +57,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ ok: true, rec });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }

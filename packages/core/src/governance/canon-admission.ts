@@ -113,19 +113,21 @@ export async function buildCanonAdmissionReadiness(cfg: BrainConfig): Promise<Ca
   const edBy = new Map((ed?.pages ?? []).map((p) => [p.path, p]));
   const hrBy = new Map((hr?.pages ?? []).map((p) => [p.path, p]));
   const unsBy = new Map<string, number>();
-  for (const u of uns.items) {
+  for (const u of uns?.items ?? []) {
     if (u.status === "resolved" || u.status === "ignored") continue;
     unsBy.set(u.pagePath, (unsBy.get(u.pagePath) ?? 0) + 1);
   }
   const conflictPages = new Set<string>();
-  for (const c of conf.items) {
+  for (const c of conf?.items ?? []) {
     if (c.status === "resolved" || c.status === "ignored" || c.status === "accepted-as-tension") continue;
     conflictPages.add(c.sourceA);
     conflictPages.add(c.sourceB);
     if (c.wikiRef) conflictPages.add(c.wikiRef);
   }
   const driftOpen = new Set(
-    drift.items.filter((d) => d.status !== "resolved" && d.status !== "ignored").map((d) => d.pagePath)
+    (drift?.items ?? [])
+      .filter((d) => d.status !== "resolved" && d.status !== "ignored")
+      .map((d) => d.pagePath)
   );
 
   const targets = new Map<string, "promotion" | "board">();
@@ -209,15 +211,13 @@ export async function buildCanonAdmissionReadiness(cfg: BrainConfig): Promise<Ca
     });
 
     const hb = hrow?.badge;
+    let humanVerdict: "pass" | "warn" | "fail" = "fail";
+    if (hb === "human-reviewed" || hb === "canonical-human-reviewed") humanVerdict = "pass";
+    else if (hb === "review-needed" || hb === "outdated-human-review") humanVerdict = "warn";
     criteria.push({
       id: "human_review",
       label: "Human review state",
-      verdict:
-        hb === "human-reviewed" || hb === "canonical-human-reviewed"
-          ? "pass"
-          : hb === "review-needed" || hb === "outdated-human-review"
-            ? "warn"
-            : "warn",
+      verdict: humanVerdict,
       note: hb ? `Badge: ${hb}${hrow?.staleAfterEdit ? " (stale after edit)" : ""}.` : "No human-review row.",
       tier: "advisory",
     });

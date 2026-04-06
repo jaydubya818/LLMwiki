@@ -47,8 +47,16 @@ export async function generateQuarterOverQuarterDiff(
   toRel: string
 ): Promise<string> {
   const paths = brainPaths(cfg.root);
-  const absA = path.join(cfg.root, fromRel);
-  const absB = path.join(cfg.root, toRel);
+  const rootAbs = path.resolve(cfg.root);
+  const absA = path.resolve(rootAbs, fromRel);
+  const absB = path.resolve(rootAbs, toRel);
+  const under = (abs: string) => {
+    const rel = path.relative(rootAbs, abs);
+    return rel !== "" && !rel.startsWith(`..${path.sep}`) && rel !== "..";
+  };
+  if (!under(absA) || !under(absB)) {
+    throw new Error("Quarter diff paths must stay within brain root");
+  }
   const rawA = await fs.readFile(absA, "utf8");
   const rawB = await fs.readFile(absB, "utf8");
   const { content: aBody, data: aFm } = matter(rawA);

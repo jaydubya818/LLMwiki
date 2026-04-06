@@ -54,9 +54,16 @@ export async function generateAnnualReflectiveReview(cfg: BrainConfig): Promise<
   });
 
   const reversed = decisions.filter((d) => d.status === "reversed" || d.status === "superseded");
-  const promoDone = promos.items.filter((p) => p.status === "promoted" && Date.parse(p.updatedAt) >= since);
+  const promoDone = promos.items.filter((p) => {
+    if (p.status !== "promoted") return false;
+    const t = Date.parse(p.updatedAt);
+    return Number.isFinite(t) && t >= since;
+  });
 
-  const resolutionsRecent = res.items.filter((r) => Date.parse(r.resolvedAt) >= since);
+  const resolutionsRecent = res.items.filter((r) => {
+    const t = Date.parse(r.resolvedAt);
+    return Number.isFinite(t) && t >= since;
+  });
 
   let improving = 0;
   let declining = 0;
@@ -71,7 +78,10 @@ export async function generateAnnualReflectiveReview(cfg: BrainConfig): Promise<
       ? (themes?.themes ?? [])
           .filter((t) => t.status === "active" || t.status === "emerging")
           .slice(0, 12)
-          .map((t) => `- **${t.title}** — strength ${t.signalStrength}/10 — ${t.recurrenceNotes[0] ?? ""}`)
+          .map(
+            (t) =>
+              `- **${t.title}** — strength ${t.signalStrength}/10 — ${t.recurrenceNotes?.[0] ?? ""}`
+          )
       : ["- Run operational refresh to populate `.brain/strategic-themes.json`."];
 
   const lines = [
@@ -120,7 +130,13 @@ export async function generateAnnualReflectiveReview(cfg: BrainConfig): Promise<
     "",
     "## Resolutions in window",
     `- Count: **${resolutionsRecent.length}**`,
-    ...resolutionsRecent.slice(0, 15).map((r) => `- \`${r.resolvedAt.slice(0, 10)}\` — ${r.issueSummary.slice(0, 100)}`),
+    ...resolutionsRecent
+      .slice(0, 15)
+      .map((r) => {
+        const sum = String(r.issueSummary ?? "");
+        const pref = r.resolvedAt ? `\`${r.resolvedAt.slice(0, 10)}\`` : "`(no date)`";
+        return `- ${pref} — ${sum.slice(0, 100)}`;
+      }),
     "",
     "## Source artifacts you had this year",
     `### Quarterly reviews (${quarterliesRecent.length} files touched in ~12 months)`,
@@ -137,8 +153,8 @@ export async function generateAnnualReflectiveReview(cfg: BrainConfig): Promise<
 
   await fs.mkdir(paths.reviewsDir, { recursive: true });
   const stamp = new Date().toISOString();
-  const fname = `annual-review-${stamp.slice(0, 4)}-${stamp.slice(0, 10)}-${stamp.slice(11, 19).replace(/:/g, "")}.md`;
+  const fname = `annual-review-${stamp.slice(0, 10)}-${stamp.slice(11, 19).replace(/:/g, "")}.md`;
   const rel = path.join("outputs", "reviews", fname);
-  await fs.writeFile(path.join(cfg.root, rel), lines.filter((x) => x !== "").join("\n"), "utf8");
+  await fs.writeFile(path.join(cfg.root, rel), lines.join("\n"), "utf8");
   return rel.split(path.sep).join("/");
 }

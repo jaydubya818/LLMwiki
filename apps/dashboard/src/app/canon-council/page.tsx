@@ -25,11 +25,32 @@ export default function CanonCouncilPage() {
   const [sort, setSort] = useState<"priority" | "path">("priority");
   const [councilNote, setCouncilNote] = useState("");
   const [councilMsg, setCouncilMsg] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const r = await fetch("/api/canon-council");
-    const j = await r.json();
-    setData(j);
+    setLoadError(null);
+    try {
+      const r = await fetch("/api/canon-council");
+      let j: FileShape = {};
+      try {
+        j = (await r.json()) as FileShape;
+      } catch (e) {
+        console.error("[canon-council] load JSON:", e);
+        setLoadError("Invalid response from server.");
+        setData(null);
+        return;
+      }
+      if (!r.ok) {
+        setLoadError(typeof (j as { error?: string }).error === "string" ? (j as { error: string }).error : `Load failed (${r.status})`);
+        setData(null);
+        return;
+      }
+      setData(j);
+    } catch (e) {
+      console.error("[canon-council] load:", e);
+      setLoadError(e instanceof Error ? e.message : "Network error");
+      setData(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -38,35 +59,59 @@ export default function CanonCouncilPage() {
 
   async function snapshotPage(path: string) {
     setCouncilMsg("");
-    const r = await fetch("/api/canon-council", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "page-snapshot", pagePath: path, reason: "canon-council" }),
-    });
-    const j = await r.json();
-    setCouncilMsg(r.ok ? `Snapshot saved · ${j.id ?? ""}` : j.error ?? "error");
+    try {
+      const r = await fetch("/api/canon-council", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "page-snapshot", pagePath: path, reason: "canon-council" }),
+      });
+      let j: { id?: string; error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[canon-council] snapshot JSON:", e);
+        setCouncilMsg(r.ok ? "Invalid response from server." : `HTTP ${r.status}`);
+        return;
+      }
+      setCouncilMsg(r.ok ? `Snapshot saved · ${j.id ?? ""}` : j.error ?? "error");
+    } catch (e) {
+      console.error("[canon-council] snapshot:", e);
+      setCouncilMsg(e instanceof Error ? e.message : "Network error");
+    }
   }
 
   async function markReviewed(it: Item, result: string) {
     setCouncilMsg("");
-    const r = await fetch("/api/canon-council", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "mark-reviewed",
-        path: it.path,
-        id: it.id,
-        kind: it.kind,
-        result,
-        rationale: councilNote.trim() || undefined,
-      }),
-    });
-    const j = await r.json();
-    setCouncilMsg(
-      r.ok
-        ? `Logged · override ${j.overrideId ?? "—"}${j.minutesPath ? ` · ${j.minutesPath}` : ""}`
-        : j.error ?? "error"
-    );
+    try {
+      const r = await fetch("/api/canon-council", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "mark-reviewed",
+          path: it.path,
+          id: it.id,
+          kind: it.kind,
+          result,
+          rationale: councilNote.trim() || undefined,
+        }),
+      });
+      let j: { overrideId?: string; minutesPath?: string; error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[canon-council] mark-reviewed JSON:", e);
+        setCouncilMsg(r.ok ? "Invalid response from server." : `HTTP ${r.status}`);
+        return;
+      }
+      setCouncilMsg(
+        r.ok
+          ? `Logged · override ${j.overrideId ?? "—"}${j.minutesPath ? ` · ${j.minutesPath}` : ""}`
+          : j.error ?? "error"
+      );
+    } catch (e) {
+      console.error("[canon-council] mark-reviewed:", e);
+      setCouncilMsg(e instanceof Error ? e.message : "Network error");
+    }
   }
 
   const items = useMemo(() => {
@@ -84,7 +129,7 @@ export default function CanonCouncilPage() {
     return rows;
   }, [data?.items, filter, sort]);
 
-  if (!data?.items && !data?.headline) {
+  if (!loadError && !data?.items && !data?.headline) {
     return <p className="text-[var(--muted)]">Loading canon council…</p>;
   }
 
@@ -92,7 +137,7 @@ export default function CanonCouncilPage() {
     <div className="mx-auto max-w-5xl space-y-6">
       <header>
         <h1 className="text-2xl font-semibold">Canon council</h1>
-        <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">{data.headline}</p>
+        <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">{data?.headline ?? "—"}</p>
         <p className="mt-1 text-xs text-[var(--muted)]">
           Executive slice for trusted knowledge — see <code className="text-[var(--accent)]">.brain/canon-council.json</code>
         </p>
@@ -112,6 +157,7 @@ export default function CanonCouncilPage() {
         </div>
       </header>
 
+      {loadError ? <p className="text-sm text-red-400">{loadError}</p> : null}
       {councilMsg ? <p className="text-sm text-sky-300/90">{councilMsg}</p> : null}
 
       <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]/40 px-3 py-2 text-xs text-[var(--muted)]">

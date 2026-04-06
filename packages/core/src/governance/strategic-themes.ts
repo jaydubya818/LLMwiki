@@ -223,8 +223,8 @@ export async function buildStrategicThemes(cfg: BrainConfig): Promise<StrategicT
     const daysSince = old
       ? (Date.now() - Date.parse(old.lastSeen)) / 86400000
       : 0;
-    if (old && daysSince > 120 && s.strength < 4) status = "fading";
-    else if (old && daysSince > 200 && s.strength < 3) status = "retired";
+    if (old && daysSince > 200 && s.strength < 3) status = "retired";
+    else if (old && daysSince > 120 && s.strength < 4) status = "fading";
     else if (!old && s.strength <= 4) status = "emerging";
 
     themes.push({

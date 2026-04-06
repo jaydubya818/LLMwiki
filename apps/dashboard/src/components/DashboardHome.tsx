@@ -56,6 +56,17 @@ type ReviewDebtUi = {
   contributors?: { label: string; count: number }[];
 };
 
+type ExecTrustCard = {
+  overallPosture?: string;
+  summaryLine?: string;
+  generatedAt?: string;
+  actionTelemetry?: {
+    windowDays: number;
+    suggestedCount: number;
+    addressedInWindow: number;
+  };
+};
+
 type CanonGuardStatus = {
   updatedAt: string;
   maxVerdict: "ok" | "warn" | "high_attention";
@@ -99,6 +110,7 @@ type Status = {
   operational?: Operational;
   doctorLast?: DoctorLastPayload | null;
   reviewDebt?: ReviewDebtUi | null;
+  execTrust?: ExecTrustCard | null;
   error?: string;
 };
 
@@ -108,10 +120,11 @@ export function DashboardHome() {
 
   const load = useCallback(async () => {
     try {
-      const [stRes, lastRes, debtRes] = await Promise.all([
+      const [stRes, lastRes, debtRes, execRes] = await Promise.all([
         fetch("/api/status"),
         fetch("/api/doctor-last"),
         fetch("/api/review-debt"),
+        fetch("/api/executive-trust"),
       ]);
       let doctorLast: DoctorLastPayload | null = null;
       if (lastRes.ok) {
@@ -130,6 +143,15 @@ export function DashboardHome() {
           reviewDebt = null;
         }
       }
+      let execTrust: ExecTrustCard | null = null;
+      if (execRes.ok) {
+        try {
+          const ej = (await execRes.json()) as ExecTrustCard & { error?: string };
+          if (ej.summaryLine && ej.generatedAt && !ej.error) execTrust = ej;
+        } catch {
+          execTrust = null;
+        }
+      }
       let st: Status;
       try {
         st = (await stRes.json()) as Status;
@@ -138,6 +160,7 @@ export function DashboardHome() {
           error: e instanceof Error ? e.message : "Failed to load status.",
           doctorLast,
           reviewDebt,
+          execTrust,
         });
         return;
       }
@@ -146,14 +169,17 @@ export function DashboardHome() {
           error: typeof st.error === "string" ? st.error : "Could not load status.",
           doctorLast,
           reviewDebt,
+          execTrust,
         });
         return;
       }
-      setS({ ...st, doctorLast, reviewDebt });
+      setS({ ...st, doctorLast, reviewDebt, execTrust });
     } catch (e) {
       setS({
         error: e instanceof Error ? e.message : "Failed to load status.",
         doctorLast: null,
+        reviewDebt: null,
+        execTrust: null,
       });
     }
   }, []);
@@ -272,6 +298,8 @@ export function DashboardHome() {
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-400">
           <Link href="/operations">Operations &amp; intelligence</Link>
           <Link href="/executive">Executive mode</Link>
+          <Link href="/executive-trust">Executive trust</Link>
+          <Link href="/canon-fragility">Canon fragility</Link>
           <Link href="/review-queue">Review priority</Link>
           <Link href="/trust">Trust &amp; curation hub</Link>
           <Link href="/promotion-inbox">Promotion inbox</Link>
@@ -280,6 +308,17 @@ export function DashboardHome() {
           <Link href="/compare">Compare wiki pages</Link>
         </div>
       </section>
+
+      {s.trustHooks ? (
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)]/40 px-3 py-2 text-xs text-[var(--muted)]">
+          <span className="font-medium text-[var(--foreground)]">Canon guard tooling:</span> git pre-commit{" "}
+          {s.trustHooks.preCommit ? "on" : "off"}, pre-push {s.trustHooks.prePush ? "on" : "off"}. Ignore list
+          entries: {s.trustHooks.ignoreRuleCount}. Pre-push scans {s.trustHooks.prePushEnabled ? "enabled" : "disabled"}{" "}
+          in settings. Hooks: commit {s.trustHooks.commitWarnOnly ? "warn-only" : "strict — blocks HIGH ATTENTION"}
+          {" · "}
+          push {s.trustHooks.prePushWarnOnly ? "warn-only" : "strict"}.
+        </section>
+      ) : null}
 
       {s.canonGuard &&
       (s.canonGuard.maxVerdict !== "ok" || s.canonGuard.highAttentionPaths.length > 0) ? (
@@ -308,6 +347,13 @@ export function DashboardHome() {
               </>
             ) : null}
           </p>
+          {(s.canonGuard.ignoredNoiseCount ?? 0) > 0 ? (
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Last run skipped {s.canonGuard.ignoredNoiseCount} open-noise path(s) (ignore lists; high-trust still
+              scanned).
+              {s.canonGuard.respectIgnore === false ? " Scan used --no-respect-ignore." : ""}
+            </p>
+          ) : null}
           <p className="mt-2 text-xs text-[var(--muted)]">
             Run <code className="text-[var(--accent)]">brain canon-guard</code> after editing canon or locked
             pages in Obsidian or an editor. Cache lives in{" "}
@@ -342,7 +388,11 @@ export function DashboardHome() {
           <p className="mt-2 text-sm capitalize text-[var(--foreground)]">
             {s.reviewDebt.level}{" "}
             <span className="text-[var(--muted)]">
-              · ~{s.reviewDebt.score0to100}/100 · {s.reviewDebt.trendHint ?? "—"}
+              ·{" "}
+              {typeof s.reviewDebt.score0to100 === "number"
+                ? `~${s.reviewDebt.score0to100}/100`
+                : "—"}{" "}
+              · {s.reviewDebt.trendHint ?? "—"}
             </span>
           </p>
           {s.reviewDebt.contributors?.[0] ? (
@@ -354,6 +404,32 @@ export function DashboardHome() {
             <Link href="/executive">Executive · plans</Link>
             <Link href="/canon-council">Canon council</Link>
             <Link href="/review-session">Review session</Link>
+          </div>
+        </section>
+      ) : null}
+
+      {s.execTrust?.summaryLine ? (
+        <section className="rounded-xl border border-sky-800/35 bg-sky-950/15 p-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Executive trust (weekly scan)
+          </h2>
+          <p className="mt-2 text-sm capitalize text-[var(--foreground)]">
+            {s.execTrust.overallPosture?.replace(/_/g, " ") ?? "—"}
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.execTrust.summaryLine}</p>
+          {s.execTrust.actionTelemetry ? (
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Actions this {s.execTrust.actionTelemetry.windowDays}d:{" "}
+              <span className="text-[var(--foreground)]">
+                {s.execTrust.actionTelemetry.addressedInWindow}/{s.execTrust.actionTelemetry.suggestedCount}
+              </span>{" "}
+              suggested items marked (log-backed).
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
+            <Link href="/executive-trust">Open control panel</Link>
+            <Link href="/canon-fragility">Fragile trusted pages</Link>
+            <Link href="/review-session">Start review session</Link>
           </div>
         </section>
       ) : null}

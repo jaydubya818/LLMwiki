@@ -13,7 +13,9 @@ type Item = {
 };
 
 function msgIsError(text: string) {
-  return /fail|error|invalid|required|missing|not found/i.test(text);
+  return /fail|error|invalid|required|missing|not found|could not|couldn't|unable to|failed to/i.test(
+    text
+  );
 }
 
 export default function UnsupportedClaimsPage() {

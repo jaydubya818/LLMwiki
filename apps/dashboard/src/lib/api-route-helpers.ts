@@ -27,7 +27,7 @@ export async function parseJsonBody<T>(
   } catch {
     return {
       ok: false,
-      response: NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }),
+      response: NextResponse.json({ error: "Malformed JSON body" }, { status: 400 }),
     };
   }
 }

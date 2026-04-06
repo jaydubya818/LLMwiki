@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
@@ -71,6 +72,12 @@ import {
   installCanonGuardGitHooks,
   readGovernanceSettings,
   patchGovernanceSettings,
+  refreshExecutiveTrustLayer,
+  readCanonFragility,
+  readExecutiveTrustSummary,
+  recordExecutiveTrustActionDone,
+  applyExecutiveActionTelemetryToSummary,
+  type KnowledgeGraph,
 } from "@second-brain/core";
 import type { OutputKind, BrainTemplateId, CanonGuardDiffScope } from "@second-brain/core";
 
@@ -470,7 +477,8 @@ program
         unstagedOnly?: boolean;
         hook?: boolean;
         push?: boolean;
-        noRespectIgnore?: boolean;
+        /** Commander sets this from `--no-respect-ignore` (default true). */
+        respectIgnore?: boolean;
         verboseIgnored?: boolean;
       }
     ) => {
@@ -503,7 +511,7 @@ program
       }
 
       const normalized = relPaths.map((p) => p.replace(/^\/+/, "")).filter(Boolean);
-      const respectIgnore = !o.noRespectIgnore;
+      const respectIgnore = o.respectIgnore !== false;
       const report = await runCanonGuard(cfg, {
         scope,
         pathsOnly: normalized.length ? normalized : undefined,
@@ -905,6 +913,92 @@ program
     for (const c of d.contributors) {
       console.log(`${c.label}\t${c.count}\t${c.note.slice(0, 60)}`);
     }
+  });
+
+program
+  .command("executive-trust")
+  .description(
+    "Regenerate executive trust summary + canon fragility JSON under .brain/ (also run by governance refresh)"
+  )
+  .option("--md", "Also write outputs/reviews/executive-trust-summary-*.md")
+  .option("--json", "Print full executive-trust-summary.json to stdout after refresh")
+  .option("--ack <key>", "Append executive action completion to governance-action-log (skip refresh)")
+  .option("--path <rel>", "Wiki path for path-scoped keys (e.g. review_fragile_top)")
+  .option("--note <text>", "Optional note stored with --ack")
+  .action(async (o: { md?: boolean; json?: boolean; ack?: string; path?: string; note?: string }) => {
+    const cfg = await getCfg();
+    const paths = brainPaths(cfg.root);
+    if (o.ack) {
+      await recordExecutiveTrustActionDone(paths, {
+        actionKey: String(o.ack),
+        targetPath: o.path ? String(o.path) : undefined,
+        rationale: o.note ? String(o.note) : undefined,
+      });
+      const raw = await readExecutiveTrustSummary(paths);
+      const s = raw ? await applyExecutiveActionTelemetryToSummary(paths, raw) : null;
+      if (o.json) {
+        console.log(JSON.stringify(s, null, 2));
+      } else {
+        const tel = s?.actionTelemetry;
+        console.log(
+          `Logged action "${o.ack}"` +
+            (tel ? ` · ${tel.addressedInWindow}/${tel.suggestedCount} suggested actions touched in ${tel.windowDays}d window` : "")
+        );
+      }
+      return;
+    }
+    let graph: KnowledgeGraph | null = null;
+    try {
+      graph = JSON.parse(await fs.readFile(paths.graphJson, "utf8")) as KnowledgeGraph;
+    } catch {
+      console.error("Note: graph.json missing — hub/centrality signals in fragility may be limited.");
+    }
+    const r = await refreshExecutiveTrustLayer(cfg, graph, { writeMarkdown: !!o.md });
+    for (const e of r.errors) console.error(e);
+    if (r.markdownRel) console.error(`Wrote ${r.markdownRel}`);
+    const raw = await readExecutiveTrustSummary(paths);
+    const s = raw ? await applyExecutiveActionTelemetryToSummary(paths, raw) : null;
+    if (o.json) {
+      console.log(JSON.stringify(s, null, 2));
+    } else if (s?.summaryLine) {
+      console.log(s.summaryLine);
+    } else if (!r.errors.length) {
+      console.log("Regenerated — check .brain/executive-trust-summary.json");
+    }
+    if (r.errors.length) process.exit(1);
+  });
+
+program
+  .command("canon-fragility")
+  .description("Print canon fragility rows (TSV) from .brain/canon-fragility.json")
+  .option("--refresh", "Regenerate JSON first (same pipeline as brain executive-trust)")
+  .option("--limit <n>", "Max rows", "40")
+  .action(async (o: { refresh?: boolean; limit?: string }) => {
+    const cfg = await getCfg();
+    const paths = brainPaths(cfg.root);
+    if (o.refresh) {
+      let graph: KnowledgeGraph | null = null;
+      try {
+        graph = JSON.parse(await fs.readFile(paths.graphJson, "utf8")) as KnowledgeGraph;
+      } catch {
+        console.error("Note: graph.json missing — hub signals may be limited.");
+      }
+      const r = await refreshExecutiveTrustLayer(cfg, graph, {});
+      for (const e of r.errors) console.error(e);
+      if (r.errors.length) process.exit(1);
+    }
+    const f = await readCanonFragility(paths);
+    if (!f?.entries?.length) {
+      console.error("No canon-fragility.json — run brain executive-trust or brain operational refresh.");
+      process.exit(1);
+    }
+    const lim = Math.max(1, parseInt(String(o.limit ?? "40"), 10) || 40);
+    for (const e of f.entries.slice(0, lim)) {
+      console.log(
+        `${e.fragilityLevel}\t${e.fragilityScore0to100}\t${e.path}\t${e.title.slice(0, 48)}\t${e.fragilityDrivers[0] ?? ""}`
+      );
+    }
+    console.error(`\n${f.note}`);
   });
 
 program

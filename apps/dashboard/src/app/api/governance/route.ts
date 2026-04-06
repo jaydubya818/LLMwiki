@@ -38,11 +38,63 @@ import {
   captureGovernanceIntent,
   readGovernanceActionLog,
   isHighSignalGovernanceContext,
+  recordExecutiveTrustActionDone,
   type HumanOverrideType,
+  type GovernanceSettings,
 } from "@second-brain/core";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { requireDashboardApiKey } from "@/lib/api-route-helpers";
+
+function parseGovernanceSettingsPatch(body: Record<string, unknown>): {
+  ok: true;
+  patch: Partial<Omit<GovernanceSettings, "version">>;
+} | { ok: false; message: string } {
+  const patch: Partial<Omit<GovernanceSettings, "version">> = {};
+  const boolKeys = [
+    "autoCaptureOverrides",
+    "requireRationaleForCanonOverrides",
+    "requireSnapshotBeforeCanon",
+    "autoSnapshotWhenMissingBeforeCanon",
+    "autoGenerateCouncilMinutes",
+    "canonGuardEnabled",
+    "canonGuardHookWarnOnly",
+    "canonGuardRequireRecentSnapshot",
+    "canonGuardStrictTrustDelta",
+    "installGitHooks",
+    "enablePrePushCanonGuard",
+    "canonGuardPrePushWarnOnly",
+    "installPrePushHook",
+  ] as const;
+  for (const k of boolKeys) {
+    if (!(k in body) || body[k] === undefined) continue;
+    if (typeof body[k] !== "boolean") return { ok: false, message: `${k} must be a boolean` };
+    (patch as Record<string, boolean>)[k] = body[k] as boolean;
+  }
+  if ("snapshotMaxAgeDaysForCanon" in body && body.snapshotMaxAgeDaysForCanon !== undefined) {
+    const n = Number(body.snapshotMaxAgeDaysForCanon);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+      return { ok: false, message: "snapshotMaxAgeDaysForCanon must be a non-negative integer" };
+    }
+    patch.snapshotMaxAgeDaysForCanon = n;
+  }
+  if ("councilMinutesMode" in body && body.councilMinutesMode !== undefined) {
+    const m = body.councilMinutesMode;
+    if (m !== "rolling" && m !== "session") {
+      return { ok: false, message: "councilMinutesMode must be 'rolling' or 'session'" };
+    }
+    patch.councilMinutesMode = m;
+  }
+  for (const k of ["canonGuardIgnorePrefixes", "canonGuardIgnorePaths"] as const) {
+    if (!(k in body) || body[k] === undefined) continue;
+    const v = body[k];
+    if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+      return { ok: false, message: `${k} must be an array of strings` };
+    }
+    (patch as Record<string, string[]>)[k] = v;
+  }
+  return { ok: true, patch };
+}
 
 export async function GET(req: Request) {
   try {
@@ -142,25 +194,11 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true, rec });
       }
       case "governance-settings-patch": {
-        const next = await patchGovernanceSettings(paths, {
-          autoCaptureOverrides: body.autoCaptureOverrides as boolean | undefined,
-          requireRationaleForCanonOverrides: body.requireRationaleForCanonOverrides as boolean | undefined,
-          requireSnapshotBeforeCanon: body.requireSnapshotBeforeCanon as boolean | undefined,
-          autoSnapshotWhenMissingBeforeCanon: body.autoSnapshotWhenMissingBeforeCanon as boolean | undefined,
-          snapshotMaxAgeDaysForCanon: body.snapshotMaxAgeDaysForCanon as number | undefined,
-          autoGenerateCouncilMinutes: body.autoGenerateCouncilMinutes as boolean | undefined,
-          councilMinutesMode: body.councilMinutesMode as "rolling" | "session" | undefined,
-          canonGuardEnabled: body.canonGuardEnabled as boolean | undefined,
-          canonGuardHookWarnOnly: body.canonGuardHookWarnOnly as boolean | undefined,
-          canonGuardRequireRecentSnapshot: body.canonGuardRequireRecentSnapshot as boolean | undefined,
-          canonGuardStrictTrustDelta: body.canonGuardStrictTrustDelta as boolean | undefined,
-          installGitHooks: body.installGitHooks as boolean | undefined,
-          enablePrePushCanonGuard: body.enablePrePushCanonGuard as boolean | undefined,
-          canonGuardPrePushWarnOnly: body.canonGuardPrePushWarnOnly as boolean | undefined,
-          installPrePushHook: body.installPrePushHook as boolean | undefined,
-          canonGuardIgnorePrefixes: body.canonGuardIgnorePrefixes as string[] | undefined,
-          canonGuardIgnorePaths: body.canonGuardIgnorePaths as string[] | undefined,
-        });
+        const parsed = parseGovernanceSettingsPatch(body);
+        if (!parsed.ok) {
+          return NextResponse.json({ error: parsed.message }, { status: 400 });
+        }
+        const next = await patchGovernanceSettings(paths, parsed.patch);
         return NextResponse.json({ ok: true, governanceSettings: next });
       }
       case "canon-promotion-update": {
@@ -322,6 +360,15 @@ export async function POST(req: Request) {
         );
         if (cap.needsRationale) {
           return NextResponse.json({ error: "rationale required", needsRationale: true }, { status: 400 });
+        }
+        try {
+          await recordExecutiveTrustActionDone(paths, {
+            actionKey: "nav_review_session",
+            targetPath: pathRel || undefined,
+            rationale: "linked: review-session-mark-item",
+          });
+        } catch {
+          /* non-fatal */
         }
         return NextResponse.json({ ok: true, capture: { overrideId: cap.override?.id, minutesPath: cap.minutesPath } });
       }

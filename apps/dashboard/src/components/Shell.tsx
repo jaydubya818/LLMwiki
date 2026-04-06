@@ -5,6 +5,8 @@ const links = [
   { href: "/", label: "Home" },
   { href: "/operations", label: "Operations" },
   { href: "/executive", label: "Executive" },
+  { href: "/executive-trust", label: "Exec trust" },
+  { href: "/canon-fragility", label: "Canon fragility" },
   { href: "/canonical-board", label: "Canonical board" },
   { href: "/steward", label: "Steward" },
   { href: "/resolutions", label: "Resolutions" },

@@ -28,6 +28,7 @@ export type GovernanceSourceWorkflow =
   | "decision_sunset"
   | "canon_council"
   | "review_session"
+  | "executive_trust"
   | "evidence_alert"
   | "review_priority"
   | "snapshot_guard"
@@ -79,31 +80,42 @@ export async function writeHumanOverrides(paths: BrainPaths, f: HumanOverridesFi
   );
 }
 
+const humanOverrideChains = new Map<string, Promise<unknown>>();
+
+function enqueueHumanOverrideWrite<T>(fileKey: string, fn: () => Promise<T>): Promise<T> {
+  const prev = humanOverrideChains.get(fileKey) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  humanOverrideChains.set(fileKey, run.then(() => undefined, () => undefined));
+  return run;
+}
+
 export async function recordHumanOverride(
   paths: BrainPaths,
   input: Omit<HumanOverrideRecord, "id" | "createdAt"> & { id?: string }
 ): Promise<HumanOverrideRecord> {
-  const f = await readHumanOverrides(paths);
-  const rec: HumanOverrideRecord = {
-    id: input.id ?? uuid(),
-    relatedPath: input.relatedPath,
-    overrideType: input.overrideType,
-    previousSuggestion: input.previousSuggestion,
-    humanDecision: input.humanDecision,
-    rationale: input.rationale,
-    createdAt: new Date().toISOString(),
-    linkedResolutionId: input.linkedResolutionId,
-    linkedDecisionPath: input.linkedDecisionPath,
-    autoCaptured: input.autoCaptured,
-    sourceWorkflow: input.sourceWorkflow,
-    relatedItemType: input.relatedItemType,
-    relatedItemId: input.relatedItemId,
-    actionTaken: input.actionTaken,
-    linkedSnapshotId: input.linkedSnapshotId,
-    linkedCouncilMinutesPath: input.linkedCouncilMinutesPath,
-  };
-  f.items.unshift(rec);
-  f.items = f.items.slice(0, 500);
-  await writeHumanOverrides(paths, f);
-  return rec;
+  return enqueueHumanOverrideWrite(paths.humanOverridesJson, async () => {
+    const f = await readHumanOverrides(paths);
+    const rec: HumanOverrideRecord = {
+      id: input.id ?? uuid(),
+      relatedPath: input.relatedPath,
+      overrideType: input.overrideType,
+      previousSuggestion: input.previousSuggestion,
+      humanDecision: input.humanDecision,
+      rationale: input.rationale,
+      createdAt: new Date().toISOString(),
+      linkedResolutionId: input.linkedResolutionId,
+      linkedDecisionPath: input.linkedDecisionPath,
+      autoCaptured: input.autoCaptured,
+      sourceWorkflow: input.sourceWorkflow,
+      relatedItemType: input.relatedItemType,
+      relatedItemId: input.relatedItemId,
+      actionTaken: input.actionTaken,
+      linkedSnapshotId: input.linkedSnapshotId,
+      linkedCouncilMinutesPath: input.linkedCouncilMinutesPath,
+    };
+    f.items.unshift(rec);
+    f.items = f.items.slice(0, 500);
+    await writeHumanOverrides(paths, f);
+    return rec;
+  });
 }

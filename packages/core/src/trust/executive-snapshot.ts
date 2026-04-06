@@ -75,9 +75,10 @@ export async function buildExecutiveSnapshot(cfg: BrainConfig): Promise<Executiv
     .slice(0, 6)
     .map((l) => ({ title: l.title, path: l.sourcePath }));
 
+  const covRows = coverage ?? [];
   const weakest =
     heat?.cells[0]?.domain ??
-    [...coverage].sort((a, b) => b.gapScore - a.gapScore)[0]?.domain;
+    [...covRows].sort((a, b) => b.gapScore - a.gapScore)[0]?.domain;
   const driftDecisionN = driftDecision?.links.length ?? 0;
   const crossTop = (dragons?.items ?? []).slice(0, 5).map((d) => ({
     path: d.path,

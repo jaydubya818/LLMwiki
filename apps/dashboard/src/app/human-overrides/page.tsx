@@ -49,11 +49,32 @@ export default function HumanOverridesPage() {
     rationale: "",
   });
   const [msg, setMsg] = useState("");
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   async function load() {
-    const r = await fetch("/api/human-overrides");
-    const j = await r.json();
-    setItems(j.items ?? []);
+    setFetchError(null);
+    try {
+      const r = await fetch("/api/human-overrides");
+      let j: { items?: Item[]; error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[human-overrides] load JSON:", e);
+        setFetchError("Invalid response from server.");
+        setItems([]);
+        return;
+      }
+      if (!r.ok) {
+        setFetchError(typeof j.error === "string" ? j.error : `Load failed (HTTP ${r.status})`);
+        setItems([]);
+        return;
+      }
+      setItems(Array.isArray(j.items) ? j.items : []);
+    } catch (e) {
+      console.error("[human-overrides] load:", e);
+      setFetchError(e instanceof Error ? e.message : "Network error");
+      setItems([]);
+    }
   }
 
   useEffect(() => {
@@ -63,17 +84,31 @@ export default function HumanOverridesPage() {
   async function submit(e: FormEvent) {
     e.preventDefault();
     setMsg("");
-    const r = await fetch("/api/human-overrides", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const j = await r.json();
-    if (r.ok) {
+    try {
+      const r = await fetch("/api/human-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      let j: { error?: string } = {};
+      let raw = "";
+      try {
+        raw = await r.text();
+        j = raw ? (JSON.parse(raw) as typeof j) : {};
+      } catch {
+        setMsg(r.ok ? "Invalid response from server." : `HTTP ${r.status}`);
+        return;
+      }
+      if (!r.ok) {
+        setMsg(typeof j.error === "string" ? j.error : `Request failed (HTTP ${r.status})`);
+        return;
+      }
       setMsg("Recorded.");
       setForm({ ...form, previousSuggestion: "", humanDecision: "", rationale: "" });
       void load();
-    } else setMsg(j.error ?? "error");
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Network error");
+    }
   }
 
   const filtered = items.filter((i) => {
@@ -99,6 +134,7 @@ export default function HumanOverridesPage() {
         <Link href="/governance" className="mt-2 inline-block text-xs text-sky-400">
           ← Governance
         </Link>
+        {fetchError ? <p className="mt-2 text-sm text-red-400">{fetchError}</p> : null}
       </header>
 
       <form onSubmit={submit} className="space-y-3 rounded-xl border border-[var(--border)] bg-[var(--card)]/50 p-4">

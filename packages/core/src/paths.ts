@@ -70,6 +70,8 @@ export function brainPaths(root: string) {
     governanceActionLogJson: path.join(r, ".brain", "governance-action-log.json"),
     councilMinutesLogMd: path.join(r, "outputs", "reviews", "canon-council-minutes-log.md"),
     lastCanonGuardJson: path.join(r, ".brain", "last-canon-guard.json"),
+    canonFragilityJson: path.join(r, ".brain", "canon-fragility.json"),
+    executiveTrustSummaryJson: path.join(r, ".brain", "executive-trust-summary.json"),
     indexMd: path.join(r, "wiki", "INDEX.md"),
     dashboardMd: path.join(r, "wiki", "dashboard.md"),
     dailyVideosMd: path.join(r, "videos", "daily_videos.md"),

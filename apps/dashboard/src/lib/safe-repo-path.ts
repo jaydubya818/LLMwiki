@@ -26,16 +26,17 @@ export function resolveWikiGitFileParam(
   cfg: BrainConfig,
   fileParam: string
 ): { ok: true; repoRel: string }   | { ok: false; reason: string } {
-  let decoded = fileParam.replace(/\0/g, "");
+  let decoded: string;
   try {
-    decoded = decodeURIComponent(decoded);
+    decoded = decodeURIComponent(fileParam);
   } catch {
     return { ok: false, reason: "Invalid file parameter" };
   }
+  decoded = decoded.replace(/\0/g, "");
 
   let rel = decoded.replace(/\\/g, "/").replace(/^\//, "");
   rel = path.posix.normalize(rel);
-  if (rel.startsWith("../") || rel.includes("/../")) {
+  if (rel === ".." || rel.startsWith("../") || rel.includes("/../")) {
     return { ok: false, reason: "Path outside wiki scope" };
   }
 
@@ -59,15 +60,16 @@ export function resolveWikiGitFileParam(
  */
 export function normalizeWikiRepoRel(cfg: BrainConfig, raw: string | undefined): string | null {
   if (raw == null || raw === "") return null;
-  let s = raw.replace(/\0/g, "");
+  let s: string;
   try {
-    s = decodeURIComponent(s);
+    s = decodeURIComponent(raw);
   } catch {
     return null;
   }
+  s = s.replace(/\0/g, "");
   s = s.replace(/\\/g, "/").replace(/^\//, "");
   s = path.posix.normalize(s);
-  if (s.startsWith("../") || s.includes("/../")) return null;
+  if (s === ".." || s.startsWith("../") || s.includes("/../")) return null;
 
   const prefix = normPrefix(cfg.wikiGitPrefix);
   if (s !== prefix && !s.startsWith(`${prefix}/`)) return null;
@@ -91,7 +93,7 @@ export function safeResolveUnderVaultRoot(
 ): { ok: true; abs: string } | { ok: false; reason: string } {
   const clean = userRel.replace(/\0/g, "").replace(/\\/g, "/").replace(/^\//, "");
   const norm = path.posix.normalize(clean);
-  if (norm.startsWith("../") || norm.includes("/../")) {
+  if (norm === ".." || norm.startsWith("../") || norm.includes("/../")) {
     return { ok: false, reason: "invalid path" };
   }
   const abs = path.resolve(root, ...toFsSegments(norm));

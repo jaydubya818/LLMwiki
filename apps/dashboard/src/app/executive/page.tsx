@@ -49,9 +49,24 @@ export default function ExecutivePage() {
   useEffect(() => {
     void load(false);
     void (async () => {
-      const r = await fetch("/api/review-debt");
-      const j = await r.json();
-      if (j.level) setDebt(j);
+      try {
+        const r = await fetch("/api/review-debt");
+        if (!r.ok) {
+          setDebt(null);
+          return;
+        }
+        let j: ReviewDebt & { error?: string } = {};
+        try {
+          j = (await r.json()) as typeof j;
+        } catch {
+          setDebt(null);
+          return;
+        }
+        if (j.level) setDebt(j);
+        else setDebt(null);
+      } catch {
+        setDebt(null);
+      }
     })();
   }, [load]);
 
@@ -62,6 +77,17 @@ export default function ExecutivePage() {
     <div className="mx-auto max-w-3xl space-y-8">
       <header>
         <h1 className="text-2xl font-semibold">Executive mode</h1>
+        <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <Link
+            href="/executive-trust"
+            className="rounded-md border border-emerald-900/45 bg-emerald-950/20 px-2 py-1 text-emerald-200"
+          >
+            Executive trust summary →
+          </Link>
+          <Link href="/canon-fragility" className="rounded-md border border-amber-900/40 px-2 py-1 text-amber-200">
+            Canon fragility →
+          </Link>
+        </div>
         <p className="mt-3 text-lg text-[var(--foreground)] leading-relaxed">{s.headline}</p>
         {s.lastRunSummary ? (
           <p className="mt-2 text-xs text-[var(--muted)]">Last run: {s.lastRunSummary}</p>
@@ -161,13 +187,28 @@ export default function ExecutivePage() {
               className="rounded-md border border-[var(--border)] px-3 py-2 text-xs"
               onClick={async () => {
                 setPlanMsg("");
-                const r = await fetch("/api/review-plan", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ label: lbl, write: true }),
-                });
-                const j = await r.json();
-                setPlanMsg(r.ok ? `Wrote ${j.path}` : j.error);
+                try {
+                  const r = await fetch("/api/review-plan", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ label: lbl, write: true }),
+                  });
+                  let j: { path?: string; error?: string } = {};
+                  try {
+                    j = (await r.json()) as typeof j;
+                  } catch (e) {
+                    setPlanMsg(e instanceof Error ? e.message : "Invalid response from server.");
+                    return;
+                  }
+                  if (!r.ok) {
+                    setPlanMsg(typeof j.error === "string" ? j.error : `Request failed (HTTP ${r.status})`);
+                    return;
+                  }
+                  const p = j.path ?? "<unknown>";
+                  setPlanMsg(`Wrote ${p}`);
+                } catch (e) {
+                  setPlanMsg(e instanceof Error ? e.message : "Network error");
+                }
               }}
             >
               Plan + save {lbl}
@@ -177,9 +218,24 @@ export default function ExecutivePage() {
             type="button"
             className="rounded-md border border-emerald-900/50 px-3 py-2 text-xs text-emerald-200"
             onClick={async () => {
-              const r = await fetch("/api/annual-review", { method: "POST" });
-              const j = await r.json();
-              setPlanMsg(r.ok ? `Annual: ${j.path}` : j.error);
+              try {
+                const r = await fetch("/api/annual-review", { method: "POST" });
+                let j: { path?: string; error?: string } = {};
+                try {
+                  j = (await r.json()) as typeof j;
+                } catch (e) {
+                  setPlanMsg(e instanceof Error ? e.message : "Invalid response from server.");
+                  return;
+                }
+                if (!r.ok) {
+                  setPlanMsg(typeof j.error === "string" ? j.error : `Request failed (HTTP ${r.status})`);
+                  return;
+                }
+                const p = j.path ?? "file";
+                setPlanMsg(`Annual: ${p}`);
+              } catch (e) {
+                setPlanMsg(e instanceof Error ? e.message : "Network error");
+              }
             }}
           >
             Generate annual review

@@ -34,7 +34,8 @@ export async function POST(req: Request) {
       minutesAsSessionFile?: boolean;
     };
     if (!body.id) return NextResponse.json({ error: "id required" }, { status: 400 });
-    const existing = (await readCanonAdmission(paths))?.records.find((r) => r.id === body.id);
+    const admissionData = await readCanonAdmission(paths);
+    const existing = admissionData?.records?.find((r) => r.id === body.id);
     const settings = await readGovernanceSettings(paths);
     const rationale = String(body.rationale ?? body.reviewerNote ?? "").trim();
 
@@ -71,7 +72,7 @@ export async function POST(req: Request) {
     if (!rec) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     if (existing && body.finalDecision && existing.finalDecision !== body.finalDecision) {
-      const cap = await captureGovernanceIntent(
+      await captureGovernanceIntent(
         cfg,
         {
           relatedPath: existing.targetPage,

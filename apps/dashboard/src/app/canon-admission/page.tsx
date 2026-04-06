@@ -18,11 +18,33 @@ type Rec = {
 export default function CanonAdmissionPage() {
   const [records, setRecords] = useState<Rec[]>([]);
   const [rationaleById, setRationaleById] = useState<Record<string, string>>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function load() {
-    const r = await fetch("/api/canon-admission");
-    const j = await r.json();
-    setRecords(j.records ?? []);
+    setLoadError(null);
+    try {
+      const r = await fetch("/api/canon-admission");
+      let j: { records?: Rec[]; error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[canon-admission] load JSON:", e);
+        setLoadError("Invalid response from server.");
+        setRecords([]);
+        return;
+      }
+      if (!r.ok) {
+        setLoadError(typeof j.error === "string" ? j.error : `Load failed (HTTP ${r.status})`);
+        setRecords([]);
+        return;
+      }
+      setRecords(Array.isArray(j.records) ? j.records : []);
+    } catch (e) {
+      console.error("[canon-admission] load:", e);
+      setLoadError(e instanceof Error ? e.message : "Network error");
+      setRecords([]);
+    }
   }
 
   useEffect(() => {
@@ -30,18 +52,36 @@ export default function CanonAdmissionPage() {
   }, []);
 
   async function save(id: string, reviewerNote: string, finalDecision: string) {
+    setSaveError(null);
     const rationale = (rationaleById[id] ?? "").trim();
-    await fetch("/api/canon-admission", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id,
-        reviewerNote,
-        finalDecision: finalDecision || undefined,
-        rationale: rationale || undefined,
-      }),
-    });
-    void load();
+    try {
+      const r = await fetch("/api/canon-admission", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          reviewerNote,
+          finalDecision: finalDecision || undefined,
+          rationale: rationale || undefined,
+        }),
+      });
+      let j: { error?: string } = {};
+      try {
+        j = (await r.json()) as typeof j;
+      } catch (e) {
+        console.error("[canon-admission] save JSON:", e);
+        setSaveError(r.ok ? "Invalid response from server." : `HTTP ${r.status}`);
+        return;
+      }
+      if (!r.ok) {
+        setSaveError(typeof j.error === "string" ? j.error : `Save failed (HTTP ${r.status})`);
+        return;
+      }
+      void load();
+    } catch (e) {
+      console.error("[canon-admission] save:", e);
+      setSaveError(e instanceof Error ? e.message : "Network error");
+    }
   }
 
   return (
@@ -56,6 +96,9 @@ export default function CanonAdmissionPage() {
           <Link href="/canon-promotions">Promotions</Link>
         </div>
       </header>
+
+      {loadError ? <p className="text-sm text-red-400">{loadError}</p> : null}
+      {saveError ? <p className="text-sm text-amber-300">{saveError}</p> : null}
 
       <ul className="space-y-6">
         {records.map((rec) => (

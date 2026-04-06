@@ -84,6 +84,10 @@ export default function CanonPromotionsPage() {
         return;
       }
       setMsg({ text: `Added ${j.rec?.id ?? "item"}`, kind: "success" });
+      setSource("");
+      setTarget("");
+      setSummary("");
+      setRationale("");
       void load();
     } catch (e) {
       setMsg({ text: e instanceof Error ? e.message : "Network error", kind: "error" });

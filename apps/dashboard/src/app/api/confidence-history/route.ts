@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
+import { internalServerError } from "@/lib/api-route-helpers";
 import { brainPaths, readConfidenceHistory, summarizeConfidenceForPage } from "@second-brain/core";
 
 export async function GET(req: Request) {
@@ -17,6 +18,6 @@ export async function GET(req: Request) {
     }
     return NextResponse.json(hist ?? { pages: [], version: 1 });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }

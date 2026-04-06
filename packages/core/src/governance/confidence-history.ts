@@ -52,11 +52,7 @@ export async function readConfidenceHistory(paths: BrainPaths): Promise<Confiden
 
 export async function writeConfidenceHistory(paths: BrainPaths, f: ConfidenceHistoryFile): Promise<void> {
   await fs.mkdir(path.dirname(paths.confidenceHistoryJson), { recursive: true });
-  await fs.writeFile(
-    paths.confidenceHistoryJson,
-    JSON.stringify({ ...f, updatedAt: new Date().toISOString() }, null, 2),
-    "utf8"
-  );
+  await fs.writeFile(paths.confidenceHistoryJson, JSON.stringify(f, null, 2), "utf8");
 }
 
 function trendFor(snapshots: ConfidenceSnapshot[]): ConfidenceTrend {

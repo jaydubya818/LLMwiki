@@ -114,8 +114,8 @@ export default function StewardPage() {
               <p className="mt-2 text-sm text-[var(--muted)]">No cross-signal rows for this domain.</p>
             ) : (
               <ul className="mt-2 space-y-2 text-sm">
-                {data.crossSignal.map((x) => (
-                  <li key={x.path}>
+                {data.crossSignal.map((x, i) => (
+                  <li key={`${x.path}-${i}`}>
                     <Link href={`/wiki?path=${encodeURIComponent(x.path)}`} className="text-sky-400">
                       {x.path}
                     </Link>

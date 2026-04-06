@@ -75,8 +75,8 @@ export default function DecisionsPage() {
       } else {
         setMsg(j.error ?? "Error refreshing ledger");
         setMsgIsError(true);
+        void load();
       }
-      void load();
     } catch (e) {
       setMsg(`Error refreshing ledger: ${e instanceof Error ? e.message : "network error"}`);
       setMsgIsError(true);

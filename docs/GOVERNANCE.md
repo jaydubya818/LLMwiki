@@ -52,6 +52,14 @@ These layers sit on the same principles: **local JSON + markdown**, **no fake pr
 | **Council minutes** | `outputs/reviews/canon-council-minutes-log.md` (+ optional timestamped files) | High-signal “what did we decide in council-style reviews?” without meeting bloat. |
 | **Review workload balancing** | `outputs/reviews/review-plan-*.md` (on demand) | I only have 10 or 30 minutes — what’s the best next review path? |
 | **Reflective annual review** | `outputs/reviews/annual-review-*.md` | Year-shaped memo on how the operating system / knowledge evolved. |
+| **Executive trust summary** | `.brain/executive-trust-summary.json`, optional `outputs/reviews/executive-trust-summary-*.md` | Compressed trust posture: canon + debt + fragile rows + domains + wins + suggested actions (weekly control panel). **Action telemetry:** voluntary “mark done” rows use workflow `executive_trust` in `.brain/governance-action-log.json`; the dashboard/API merge **lastMarkedDoneAt** + **actionTelemetry** counts (default 14d window) so you see suggested vs addressed without a new database. Completing an item in **Review session** also logs `nav_review_session` for the same rollup. |
+| **Canon fragility index** | `.brain/canon-fragility.json` | High-trust pages that are *trusted but brittle* — prioritization before canon work, not “low trust.” |
+
+### Executive trust vs canon fragility
+
+- **Executive trust summary** answers: *What is the overall trust posture right now?* It aggregates review debt, fragile canonical rows, cross-signal hotspots, promotions, queue pressure, domain-level hints, and a short list of “trust wins” so the UI does not feel like a pure risk feed.
+- **Canon fragility index** answers: *Which trusted pages are most likely to go stale or misleading without being obviously “wrong”?* Same wiki page can be canon-stable and still fragile (thin evidence, stacked warnings, declining advisory confidence, decision impact, graph hub dependence).
+- **Posture buckets** (`strong`, `stable_watchlist`, `mixed`, `fragile`, `high_attention`) and **fragility buckets** (`low` … `critical`) are **explainable heuristics** — useful for ordering your attention, not for claiming numeric truth.
 
 ### How to interpret heuristics
 
@@ -71,7 +79,9 @@ These layers sit on the same principles: **local JSON + markdown**, **no fake pr
 
 ### Cadence additions
 
-- After **`brain lint`** or **`brain operational refresh`**, open **`/canonical-board`** and **`/cross-signal`** for the hottest rows.
+- After **`brain lint`** or **`brain operational refresh`**, open **`/executive-trust`** (3-minute scan) **`/canonical-board`** and **`/cross-signal`** for the hottest rows.
+- **Weekly:** skim **Executive trust** on Home or **`/executive-trust`**; use **Canon fragility** monthly or before large canon edits.
+- Treat both as **prioritization tools**, not truth machines — confirm in prose, git, and resolutions.
 - When closing a trust queue item, optionally fill **Resolution memory** on Conflicts / Unsupported / Drift — future you gets the “why.”
 - Monthly: generate **`brain review-packet`** (or dashboard button) before a focused session; snapshot canon pages before large merges (**`brain snapshot`** or wiki panel).
 
@@ -109,7 +119,7 @@ These layers sit on the same principles: **local JSON + markdown**, **no fake pr
 | `brain review-packet` | Write `outputs/reviews/review-packet-*.md`. |
 | `brain snapshot wiki/... [-m reason]` | Dated snapshot under `outputs/reviews/snapshots/`. |
 | `brain canon-guard …` | Off-dashboard trust scan for wiki git diffs (`--json`, `--no-save`, `--staged-only`, `--unstaged-only`, `--hook`, optional paths). Writes `.brain/last-canon-guard.json` by default cache. |
-| `brain install-hooks` | Writes `.git/hooks/pre-commit` to run `brain canon-guard --hook` (warn-only unless settings say otherwise). |
+| `brain install-hooks [--pre-commit] [--pre-push] [--all]` | Writes or **appends** `.git/hooks/pre-commit` / `pre-push` to run `brain canon-guard --hook`. If a hook already exists and is **not** from this tool, the installer **appends** a marked block instead of overwriting. **Back up** existing hooks first; prefer a hook runner (**pre-commit**, **husky**, etc.) if you already chain multiple checks. Default: pre-commit only. |
 | `brain steward --domain work` | Alias for steward digest (one domain). |
 | `brain steward-digest --domain work` | One-domain digest. |
 | `brain steward-digest --all` | All active domains. |
@@ -118,6 +128,9 @@ These layers sit on the same principles: **local JSON + markdown**, **no fake pr
 | `brain review-session --rebuild` | Rebuild queue after refresh. |
 | `brain canon-council` | TSV rows from `.brain/canon-council.json` (after refresh). |
 | `brain review-debt` | Summary lines from `.brain/review-debt.json`. |
+| `brain executive-trust [--md] [--json]` | Regenerate `.brain/executive-trust-summary.json` + `.brain/canon-fragility.json` (also runs at end of governance refresh). Optional markdown report and stdout JSON. |
+| `brain executive-trust --ack <actionKey> [--path wiki/…] [--note …]` | Append executive action completion to the governance action log only (keys match dashboard suggestions, e.g. `nav_drift`, `review_fragile_top` with `--path`). |
+| `brain canon-fragility [--refresh] [--limit n]` | TSV from `.brain/canon-fragility.json`; `--refresh` rebuilds both JSON files. |
 | `brain decision-sunset` | TSV rows from `.brain/decision-sunset.json`. |
 | `brain qoq-diff --from <p> --to <p>` | Write `outputs/reviews/quarter-diff-*.md`. |
 | `brain annual-review` | Write `outputs/reviews/annual-review-*.md`. |
@@ -144,14 +157,31 @@ These layers sit on the same principles: **local JSON + markdown**, **no fake pr
 - **Human overrides** (`/human-overrides`) — append-only journal + filter UI.
 - **Canon admission** (`/canon-admission`) — checklist rows per promotion / high-trust targets.
 - **Executive** — review debt strip + one-click review plans + annual review action.
+- **Executive trust** (`/executive-trust`) — compact posture, fragile rows, wins, domains, action links + **Mark done** (POST body `{ "markActionDone": true, "actionKey": "…", "targetPath"?: "…" }`); `GET` always merges log-backed completion hints. `GET/POST /api/executive-trust` (POST also regenerates with `{ "writeMarkdown": true }` when not marking done; respects dashboard API key when set).
+- **Canon fragility** (`/canon-fragility`) — ordered brittle trusted pages with drivers and quick links; `GET /api/canon-fragility`.
 
 ## API
 
-`GET/POST /api/governance` — loads governance JSON (+ optional `?actionLogLimit=N` for a slice of **governance-action-log**). POST actions include `refresh`, **`governance-settings-patch`**, canon promotion update/materialize (**materialize** may return **409 SNAPSHOT_REQUIRED**), **`review-session-mark-item`**, evidence alert status, page snapshot, session rebuild/cursor/summary, steward digest, quarterly review.
+Dashboard routes sit behind optional **`SECOND_BRAIN_DASHBOARD_API_KEY`** (Bearer or `X-Dashboard-Key`) where noted. Status-changing POSTs may append **human overrides** + **governance action log** when configured (e.g. conflicts / drift / unsupported-claim flows).
 
-`POST /api/canon-council` (optional dashboard API key): `page-snapshot`, `mark-reviewed`, `write-minutes`.
+| Method(s) | Path | Purpose | Payload / query | Auth / notes |
+|-----------|------|---------|-----------------|--------------|
+| GET, POST | `/api/governance` | Governance hub JSON; POST actions | GET: optional `?actionLogLimit=N` for log slice. POST: `action` e.g. `refresh`, **`governance-settings-patch`** (validated fields), canon promotion add/update/**materialize** (**materialize** may **409 SNAPSHOT_REQUIRED**), **`review-session-mark-item`**, evidence alerts, snapshots, session rebuild/cursor/summary, steward digest, quarterly review | API key on POST |
+| GET | `/api/canon-council` | Read council slice JSON | — | Read-mostly |
+| POST | `/api/canon-council` | Mutations | `page-snapshot`, `mark-reviewed` (optional `appendCouncilMinutes` with `lines[]`, `followUp`), `write-minutes` (`title`, `lines[]`, `followUp`) | API key when set |
+| GET | `/api/review-debt` | Review debt meter | — | **404** if file missing (run lint / refresh) |
+| GET, POST | `/api/decision-sunset` | Sunset hints; POST status | POST: `id`, `status`, optional `rationale` | POST changes data |
+| GET | `/api/strategic-themes` | Strategic themes JSON | — | Read-mostly |
+| GET | `/api/confidence-history` | Confidence history | Optional `?path=` for per-page summary | Read-mostly |
+| GET, POST | `/api/human-overrides` | Override journal | POST: validated `overrideType`, path, decisions, rationale | POST appends entry |
+| GET, POST | `/api/canon-admission` | Admission checklist | POST: `id`, notes, `finalDecision`, optional `rationale`, council minutes | Changes data |
+| GET, POST | `/api/qoq-diff` | Quarter-over-quarter diff file | POST: from/to paths (validated under vault root) | —
+| GET, POST | `/api/review-plan` | Review workload plan | POST: `label`, `write` | —
+| POST | `/api/annual-review` | Writes annual review markdown | — | API key when set; **500** body is generic |
+| GET, POST | `/api/executive-trust` | Executive trust summary | POST may include `writeMarkdown` | API key when set |
+| GET | `/api/canon-fragility` | Canon fragility JSON | — | Read-mostly |
 
-Additional JSON routes (read-mostly): `GET /api/review-debt`, `GET/POST /api/canon-council`, `/api/decision-sunset` + `POST` status updates (+ optional `rationale`), `/api/strategic-themes`, `/api/confidence-history?path=`, `/api/human-overrides` + `POST` new override, `/api/canon-admission` + `POST` patch note/decision (+ optional `rationale`, council minutes payload), **conflicts / drift / unsupported-claim** POST paths now append **human overrides** + **action log** on status changes, `GET/POST /api/qoq-diff`, `GET/POST /api/review-plan`, `POST /api/annual-review`.
+**Change-heavy** vs **read-mostly:** table rows that perform writes are POST branches on governance, canon-council, decision-sunset, human-overrides, canon-admission, qoq-diff, review-plan, annual-review, executive-trust (POST). Read-mostly: GET endpoints above plus confidence-history and strategic-themes.
 
 ## Cadence: weekly → annual (using this pass)
 
@@ -215,14 +245,22 @@ Copy **`.brain/governance-settings.example.json`** → **`.brain/governance-sett
 
 **`brain canon-guard`** inspects **git-scoped wiki changes** (staged, unstaged, and untracked `.md` under your wiki prefix) and warns when **canonical / locked / manual-review** pages are edited **outside the dashboard** without a **recent snapshot** or **nearby governance trail** (action log, overrides, promotions, canon admission — roughly the last **72 hours**).
 
-- **Output:** per-file **OK / WARN / HIGH ATTENTION**, trust-field deltas (vs `HEAD`), snapshot age from **`.brain/snapshot-bundles.json`**, and suggested next steps (`brain snapshot …`, council / admission, override journal).
+- **Output:** per-file **OK / WARN / HIGH ATTENTION**, trust-field deltas (vs `HEAD`), snapshot age from **`.brain/snapshot-bundles.json`**, counts of **ignored open-noise paths**, and suggested next steps (`brain snapshot …`, council / admission, override journal).
 - **Cache:** default run writes **`.brain/last-canon-guard.json`** for **`brain doctor`** and the **dashboard home** card (use **`--no-save`** to skip).
-- **Flags:** **`--json`**, **`--staged-only`**, **`--unstaged-only`**, optional path args, **`--hook`** (for git — see below).
-- **Settings** (`.brain/governance-settings.json`): **`canonGuardEnabled`** (when false: **doctor** skips the summary and **`brain canon-guard --hook`** exits immediately; manual **`brain canon-guard`** without **`--hook`** still runs), **`canonGuardHookWarnOnly`** (default **true** — hook exits **0** even on HIGH ATTENTION), **`canonGuardRequireRecentSnapshot`**, **`canonGuardStrictTrustDelta`**, **`installGitHooks`** (informational, set by **`brain install-hooks`**).
+- **Flags:** **`--json`**, **`--staged-only`**, **`--unstaged-only`**, **`--no-respect-ignore`**, **`--verbose-ignored`**, optional path args, **`--hook`** (pre-commit), **`--hook --push`** (pre-push; internal — staged-only).
+- **Ignore lists:** **`canonGuardIgnorePrefixes`** and **`canonGuardIgnorePaths`** drop **low-trust churn** only. If a path is **canon / locked / manual-review**, has **trust frontmatter changes**, or **trust escalation**, it is **still scanned** even when it matches an ignore rule — do not use wide prefixes as a blanket “hide canon” tool.
+- **Settings** (`.brain/governance-settings.json`): **`canonGuardEnabled`**, **`canonGuardHookWarnOnly`**, **`canonGuardPrePushWarnOnly`**, **`enablePrePushCanonGuard`** (when false, **`canon-guard --hook --push`** exits immediately), **`canonGuardRequireRecentSnapshot`**, **`canonGuardStrictTrustDelta`**, **`installGitHooks`** / **`installPrePushHook`** (informational).
 
-**`brain install-hooks`** writes **`pre-commit`** under **`.git/hooks/`** to run **`brain canon-guard --hook`**. Default is **warn-only**; set **`canonGuardHookWarnOnly: false`** to **block** commits when the report reaches **HIGH ATTENTION**. Ensure **`brain`** is on **`PATH`** when git runs the hook (or edit the hook to use an absolute path to the CLI).
+**Git hooks — `brain install-hooks`**
 
-**Suggested use:** run **`brain canon-guard`** before committing if you edit canon or locked pages in **Obsidian**, **VS Code**, or **scripts**; enable the hook if you do that often.
+- **Default:** **pre-commit** only (`brain canon-guard --hook`). Use **`--pre-push`** or **`--all`** to add **pre-push**.
+- **Pre-commit:** local reminder before each commit (working tree + index in scope for the CLI; the hook still calls canon-guard without forcing `--staged-only` — same as today).
+- **Pre-push:** **final check before sharing** — the hook runs **`brain canon-guard --hook --push`**, which scans **staged content only** (what you are about to publish). **Not** a duplicate pre-commit: different scope and timing. Warn-first default.
+- **Strict mode:** **`canonGuardHookWarnOnly: false`** affects pre-commit; **`canonGuardPrePushWarnOnly: false`** affects pre-push (blocks **push** on **HIGH ATTENTION**).
+
+**Good ignore examples:** `wiki/scratch/`, `wiki/daily/`, `outputs/drafts/` — noisy **open** areas. **Avoid** broad prefixes like `wiki/decisions/` unless every file there is truly noise (canon pages there still bypass ignore when high-trust).
+
+**Suggested use:** **pre-commit** for immediate local habit; **pre-push** if you often commit locally then push, or want one last gate before remote; run **`brain canon-guard`** manually before big merges regardless.
 
 ## Heuristic details (short)
 

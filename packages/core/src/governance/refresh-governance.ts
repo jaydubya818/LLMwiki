@@ -13,6 +13,7 @@ import { buildDriftDecisionBridge } from "./drift-decision-bridge.js";
 import { scanSourceSupersession } from "./source-supersession.js";
 import { buildCanonicalBoard } from "./canonical-board.js";
 import { buildCrossSignalCorrelation } from "./cross-signal.js";
+import { refreshExecutiveTrustLayer } from "./executive-trust-layer.js";
 
 export async function refreshGovernanceArtifacts(
   cfg: BrainConfig,
@@ -43,6 +44,9 @@ export async function refreshGovernanceArtifacts(
   await run("source-supersession", () => scanSourceSupersession(cfg));
   await run("canonical-board", () => buildCanonicalBoard(cfg, wikiRelPaths, graph));
   await run("cross-signal", () => buildCrossSignalCorrelation(cfg, graph));
+
+  const execTrust = await refreshExecutiveTrustLayer(cfg, graph, {});
+  errors.push(...execTrust.errors);
 
   return { errors };
 }

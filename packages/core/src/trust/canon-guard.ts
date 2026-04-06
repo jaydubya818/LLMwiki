@@ -575,7 +575,7 @@ function brainCanonGuardHookCmd(opts: InstallCanonGuardHookOptions, push: boolea
 }
 
 /**
- * Install canon-guard git hooks. Does not overwrite unrelated hooks — replaces hook file entirely for selected kinds.
+ * Install canon-guard git hooks. If a hook already exists without a second-brain marker, appends our block instead of clobbering.
  */
 export async function installCanonGuardGitHooks(
   opts: InstallCanonGuardHookOptions,
@@ -587,22 +587,41 @@ export async function installCanonGuardGitHooks(
 
   if (which.preCommit) {
     const hookPath = path.join(hooksDir, "pre-commit");
-    const lines: string[] = [
+    const fullScript = [
       "#!/bin/sh",
       "# second-brain:canon-guard-pre-commit",
       "# Local reminder: canon/locked/trust edits (not ordinary open-page churn).",
       ...hookEnvLines(opts),
       brainCanonGuardHookCmd(opts, false),
       "",
-    ];
-    await fs.writeFile(hookPath, lines.join("\n"), "utf8");
+    ].join("\n");
+    const appendOnly = [
+      "",
+      "# --- second-brain:canon-guard-pre-commit (appended; content above preserved) ---",
+      ...hookEnvLines(opts),
+      brainCanonGuardHookCmd(opts, false),
+      "",
+    ].join("\n");
+    let existing = "";
+    try {
+      existing = await fs.readFile(hookPath, "utf8");
+    } catch {
+      existing = "";
+    }
+    if (!existing.trim()) {
+      await fs.writeFile(hookPath, fullScript, "utf8");
+    } else if (existing.includes("second-brain:canon-guard-pre-commit")) {
+      await fs.writeFile(hookPath, fullScript, "utf8");
+    } else {
+      await fs.writeFile(hookPath, `${existing.replace(/\s*$/, "")}${appendOnly}`, "utf8");
+    }
     await fs.chmod(hookPath, 0o755);
     out.preCommit = hookPath;
   }
 
   if (which.prePush) {
     const hookPath = path.join(hooksDir, "pre-push");
-    const lines: string[] = [
+    const fullScript = [
       "#!/bin/sh",
       "# second-brain:canon-guard-pre-push",
       "# Final trust pass before sharing: staged wiki changes only.",
@@ -612,8 +631,30 @@ export async function installCanonGuardGitHooks(
       ...hookEnvLines(opts),
       brainCanonGuardHookCmd(opts, true),
       "",
-    ];
-    await fs.writeFile(hookPath, lines.join("\n"), "utf8");
+    ].join("\n");
+    const appendOnly = [
+      "",
+      "# --- second-brain:canon-guard-pre-push (appended; content above preserved) ---",
+      `echo "" >&2`,
+      `echo "second-brain pre-push: running canon-guard (staged only). Open pages are not the main signal." >&2`,
+      `echo "See canonGuardPrePushWarnOnly + enablePrePushCanonGuard in .brain/governance-settings.json." >&2`,
+      ...hookEnvLines(opts),
+      brainCanonGuardHookCmd(opts, true),
+      "",
+    ].join("\n");
+    let existing = "";
+    try {
+      existing = await fs.readFile(hookPath, "utf8");
+    } catch {
+      existing = "";
+    }
+    if (!existing.trim()) {
+      await fs.writeFile(hookPath, fullScript, "utf8");
+    } else if (existing.includes("second-brain:canon-guard-pre-push")) {
+      await fs.writeFile(hookPath, fullScript, "utf8");
+    } else {
+      await fs.writeFile(hookPath, `${existing.replace(/\s*$/, "")}${appendOnly}`, "utf8");
+    }
     await fs.chmod(hookPath, 0o755);
     out.prePush = hookPath;
   }

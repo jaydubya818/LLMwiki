@@ -69,6 +69,16 @@ export * from "./governance/drift-decision-bridge.js";
 export * from "./governance/source-supersession.js";
 export * from "./governance/canonical-board.js";
 export * from "./governance/cross-signal.js";
+export * from "./governance/executive-trust-layer.js";
+export {
+  recordExecutiveTrustActionDone,
+  applyExecutiveActionTelemetryToSummary,
+  lastExecutiveActionCompletionAt,
+  EXECUTIVE_TRUST_WORKFLOW,
+  EXECUTIVE_ACTION_LOG_VERB,
+  EXECUTIVE_ACTION_REF_TYPE,
+  DEFAULT_EXECUTIVE_TELEMETRY_DAYS,
+} from "./governance/executive-trust-telemetry.js";
 export * from "./governance/review-packet.js";
 export * from "./governance/review-debt.js";
 export * from "./governance/confidence-history.js";

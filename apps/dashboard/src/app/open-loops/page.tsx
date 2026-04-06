@@ -26,12 +26,12 @@ export default function OpenLoopsPage() {
     return () => window.clearTimeout(t);
   }, [domainInput]);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setLoadError(null);
     try {
       const q = domainFilter ? `?domain=${encodeURIComponent(domainFilter)}` : "";
-      const r = await fetch(`/api/open-loops${q}`);
+      const r = await fetch(`/api/open-loops${q}`, { signal });
       const j = (await r.json()) as { items?: L[]; error?: string };
       if (!r.ok) {
         setLoadError(typeof j.error === "string" ? j.error : `Request failed (${r.status})`);
@@ -40,6 +40,7 @@ export default function OpenLoopsPage() {
       }
       setItems(Array.isArray(j.items) ? j.items : []);
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       console.error(e);
       setLoadError("Could not load open loops.");
       setItems([]);
@@ -49,7 +50,9 @@ export default function OpenLoopsPage() {
   }, [domainFilter]);
 
   useEffect(() => {
-    void load();
+    const ac = new AbortController();
+    void load(ac.signal);
+    return () => ac.abort();
   }, [load]);
 
   async function setSt(id: string, status: string) {
@@ -89,7 +92,6 @@ export default function OpenLoopsPage() {
         value={domainInput}
         onChange={(e) => setDomainInput(e.target.value)}
         placeholder="e.g. work — applies after you pause typing"
-        aria-label="Filter open loops by domain"
         autoComplete="off"
         className="mt-1 w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--card)] px-3 py-2 text-sm"
       />

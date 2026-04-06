@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerBrainConfig } from "@/lib/brain";
-import { requireDashboardApiKey } from "@/lib/api-route-helpers";
+import { requireDashboardApiKey, internalServerError } from "@/lib/api-route-helpers";
 import {
   brainPaths,
   readCanonCouncil,
@@ -18,7 +18,7 @@ export async function GET() {
     const c = await readCanonCouncil(paths);
     return NextResponse.json(c ?? { error: "missing — run operational refresh", items: [] });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }
 
@@ -45,6 +45,26 @@ export async function POST(req: Request) {
       const settings = await readGovernanceSettings(paths);
       const pathRel = String(body.path ?? "");
       const rationale = typeof body.rationale === "string" ? body.rationale : "";
+      const defaultMinuteLines = [
+        `- Item ${String(body.id ?? "")} (${String(body.kind ?? "")})`,
+        `- Path: \`${pathRel}\``,
+        `- Result: ${String(body.result ?? "reviewed")}`,
+      ];
+      const appendRaw =
+        body.appendCouncilMinutes && typeof body.appendCouncilMinutes === "object"
+          ? (body.appendCouncilMinutes as Record<string, unknown>)
+          : undefined;
+      let councilLines = defaultMinuteLines;
+      if (appendRaw && Array.isArray(appendRaw.lines)) {
+        const filtered = appendRaw.lines.filter((e): e is string => typeof e === "string");
+        if (filtered.length > 0) councilLines = filtered;
+      }
+      let councilFollowUp: string | undefined;
+      if (appendRaw) {
+        const fu = appendRaw.followUp;
+        if (typeof fu === "string") councilFollowUp = fu;
+        else if (typeof fu === "number" || typeof fu === "boolean") councilFollowUp = String(fu);
+      }
       const cap = await captureGovernanceIntent(
         cfg,
         {
@@ -57,22 +77,13 @@ export async function POST(req: Request) {
           autoCaptured: !rationale.trim(),
           relatedItemType: typeof body.kind === "string" ? body.kind : "canon_council_row",
           relatedItemId: typeof body.id === "string" ? body.id : undefined,
-          appendCouncilMinutes:
-            body.appendCouncilMinutes && typeof body.appendCouncilMinutes === "object"
-              ? {
-                  title: String((body.appendCouncilMinutes as Record<string, unknown>).title ?? "Canon council"),
-                  lines: (Array.isArray((body.appendCouncilMinutes as Record<string, unknown>).lines)
-                    ? ((body.appendCouncilMinutes as Record<string, unknown>).lines as string[])
-                    : [
-                        `- Item ${String(body.id ?? "")} (${String(body.kind ?? "")})`,
-                        `- Path: \`${pathRel}\``,
-                        `- Result: ${String(body.result ?? "reviewed")}`,
-                      ]) as string[],
-                  followUp: (body.appendCouncilMinutes as Record<string, unknown>).followUp as
-                    | string
-                    | undefined,
-                }
-              : undefined,
+          appendCouncilMinutes: appendRaw
+            ? {
+                title: String(appendRaw.title ?? "Canon council"),
+                lines: councilLines,
+                followUp: councilFollowUp,
+              }
+            : undefined,
           minutesAsSessionFile: body.minutesAsSessionFile === true,
         },
         settings
@@ -86,7 +97,13 @@ export async function POST(req: Request) {
     if (action === "write-minutes") {
       const settings = await readGovernanceSettings(paths);
       const title = String(body.title ?? "Canon council minutes");
-      const lines = Array.isArray(body.lines) ? (body.lines as string[]) : [];
+      if (
+        body.lines !== undefined &&
+        (!Array.isArray(body.lines) || !body.lines.every((el) => typeof el === "string"))
+      ) {
+        return NextResponse.json({ error: "lines must be an array of strings" }, { status: 400 });
+      }
+      const lines = Array.isArray(body.lines) ? body.lines : [];
       const followUp = typeof body.followUp === "string" ? body.followUp : undefined;
       const asSession = body.sessionFile === true || settings.councilMinutesMode === "session";
       const rel = asSession
@@ -97,6 +114,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return internalServerError(e);
   }
 }

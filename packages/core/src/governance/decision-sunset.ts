@@ -110,7 +110,10 @@ export async function buildDecisionSunsetHints(cfg: BrainConfig): Promise<Decisi
     arr.push(l.id);
     loopsForPath.set(l.sourcePath, arr);
   }
-  const supersedeCount = (superSess?.items ?? []).filter((x) => x.status === "suggested").length;
+  const supersededOlderSources = new Set<string>();
+  for (const x of superSess?.items ?? []) {
+    if (x.status === "suggested") supersededOlderSources.add(x.olderSource);
+  }
 
   const prev = await readDecisionSunset(paths);
   const preservedById = new Map((prev?.hints ?? []).map((h) => [h.id, h]));
@@ -152,8 +155,11 @@ export async function buildDecisionSunsetHints(cfg: BrainConfig): Promise<Decisi
       }
     }
 
-    if (supersedeCount > 0 && (d.sources?.length ?? 0) > 0) {
-      why.push("Vault has raw supersession hints — check whether sources are stale.");
+    const decisionSources = d.sources ?? [];
+    if (decisionSources.some((s) => supersededOlderSources.has(s))) {
+      why.push(
+        "Decision cites source(s) flagged as older/superseded in the supersession queue — verify citations."
+      );
     }
 
     if (why.length === 0) continue;
@@ -210,23 +216,45 @@ export async function buildDecisionSunsetHints(cfg: BrainConfig): Promise<Decisi
   return file;
 }
 
+const sunsetUpdateChains = new Map<string, Promise<unknown>>();
+
+function enqueueDecisionSunsetUpdate<T>(fileKey: string, fn: () => Promise<T>): Promise<T> {
+  const prev = sunsetUpdateChains.get(fileKey) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  sunsetUpdateChains.set(fileKey, run.then(() => undefined, () => undefined));
+  return run;
+}
+
+export type DecisionSunsetStatusUpdate = {
+  rec: DecisionSunsetHint | null;
+  /** Snapshot of the hint before mutation (same object shape); null when id not found. */
+  before: DecisionSunsetHint | null;
+};
+
+/**
+ * Serialized per paths.decisionSunsetJson so concurrent updates do not clobber each other.
+ * Returns `{ before, rec }` from a single read-modify-write (no separate pre-read for status transitions).
+ */
 export async function updateDecisionSunsetStatus(
   paths: BrainPaths,
   id: string,
   status: DecisionSunsetStatus,
   patch?: Partial<Pick<DecisionSunsetHint, "summary" | "suggestedNext">>
-): Promise<DecisionSunsetHint | null> {
-  const f =
-    (await readDecisionSunset(paths)) ??
-    ({ version: 1, updatedAt: new Date().toISOString(), hints: [] } as DecisionSunsetFile);
-  const idx = f.hints.findIndex((h) => h.id === id);
-  if (idx < 0) return null;
-  f.hints[idx] = {
-    ...f.hints[idx]!,
-    ...patch,
-    status,
-    updatedAt: new Date().toISOString(),
-  };
-  await writeDecisionSunset(paths, f);
-  return f.hints[idx]!;
+): Promise<DecisionSunsetStatusUpdate> {
+  return enqueueDecisionSunsetUpdate(paths.decisionSunsetJson, async () => {
+    const f =
+      (await readDecisionSunset(paths)) ??
+      ({ version: 1, updatedAt: new Date().toISOString(), hints: [] } as DecisionSunsetFile);
+    const idx = f.hints.findIndex((h) => h.id === id);
+    if (idx < 0) return { rec: null, before: null };
+    const before = { ...f.hints[idx]! };
+    f.hints[idx] = {
+      ...f.hints[idx]!,
+      ...patch,
+      status,
+      updatedAt: new Date().toISOString(),
+    };
+    await writeDecisionSunset(paths, f);
+    return { rec: f.hints[idx]!, before };
+  });
 }
