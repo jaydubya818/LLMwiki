@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+// ─── Types (kept from original, no changes) ─────────────────────────────────
+
 type RecentFile = { path: string; mtimeMs: number };
 
 type Operational = {
@@ -49,56 +51,13 @@ type DoctorLastPayload = {
   };
 };
 
-type ReviewDebtUi = {
-  level?: string;
-  score0to100?: number;
-  trendHint?: string;
-  contributors?: { label: string; count: number }[];
-};
-
-type ExecTrustCard = {
-  overallPosture?: string;
-  summaryLine?: string;
-  generatedAt?: string;
-  actionTelemetry?: {
-    windowDays: number;
-    suggestedCount: number;
-    addressedInWindow: number;
-  };
-};
-
-type CanonGuardStatus = {
-  updatedAt: string;
-  maxVerdict: "ok" | "warn" | "high_attention";
-  summaryLine: string;
-  findingCount: number;
-  highAttentionPaths: string[];
-  paths: string[];
-  ignoredNoiseCount?: number;
-  respectIgnore?: boolean;
-};
-
-type TrustHooksStatus = {
-  preCommit: boolean;
-  prePush: boolean;
-  ignoreRuleCount: number;
-  commitWarnOnly: boolean;
-  prePushWarnOnly: boolean;
-  prePushEnabled: boolean;
-};
-
 type Status = {
   root?: string;
   brainName?: string;
   vaultName?: string;
-  vaultNameSource?: string;
   workspaceRoot?: string | null;
-  gitRoot?: string;
-  canonGuard?: CanonGuardStatus | null;
-  trustHooks?: TrustHooksStatus;
   state?: {
     lastIngestAt?: string;
-    lastCompileAt?: string;
     lastLintAt?: string;
     lastReviewAt?: string;
     pendingWikiChanges?: string[];
@@ -106,649 +65,326 @@ type Status = {
   runs?: { kind: string; summary: string; ok: boolean; startedAt?: string }[];
   searchDocs?: number;
   graphMeta?: { nodeCount?: number; orphans?: number };
-  logTail?: string;
   operational?: Operational;
   doctorLast?: DoctorLastPayload | null;
-  reviewDebt?: ReviewDebtUi | null;
-  execTrust?: ExecTrustCard | null;
   error?: string;
 };
 
+// ─── Component ───────────────────────────────────────────────────────────────
+
 export function DashboardHome() {
   const [s, setS] = useState<Status | null>(null);
-  const [msg, setMsg] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const load = useCallback(async () => {
     try {
-      const [stRes, lastRes, debtRes, execRes] = await Promise.all([
+      const [stRes, lastRes] = await Promise.all([
         fetch("/api/status"),
         fetch("/api/doctor-last"),
-        fetch("/api/review-debt"),
-        fetch("/api/executive-trust"),
       ]);
       let doctorLast: DoctorLastPayload | null = null;
       if (lastRes.ok) {
-        try {
-          doctorLast = (await lastRes.json()) as DoctorLastPayload;
-        } catch {
-          doctorLast = null;
-        }
-      }
-      let reviewDebt: ReviewDebtUi | null = null;
-      if (debtRes.ok) {
-        try {
-          const dj = (await debtRes.json()) as ReviewDebtUi;
-          if (dj.level) reviewDebt = dj;
-        } catch {
-          reviewDebt = null;
-        }
-      }
-      let execTrust: ExecTrustCard | null = null;
-      if (execRes.ok) {
-        try {
-          const ej = (await execRes.json()) as ExecTrustCard & { error?: string };
-          if (ej.summaryLine && ej.generatedAt && !ej.error) execTrust = ej;
-        } catch {
-          execTrust = null;
-        }
-      }
-      let st: Status;
-      try {
-        st = (await stRes.json()) as Status;
-      } catch (e) {
-        setS({
-          error: e instanceof Error ? e.message : "Failed to load status.",
-          doctorLast,
-          reviewDebt,
-          execTrust,
-        });
-        return;
+        try { doctorLast = (await lastRes.json()) as DoctorLastPayload; } catch { doctorLast = null; }
       }
       if (!stRes.ok) {
-        setS({
-          error: typeof st.error === "string" ? st.error : "Could not load status.",
-          doctorLast,
-          reviewDebt,
-          execTrust,
-        });
+        setS({ error: "Could not load status.", doctorLast });
         return;
       }
-      setS({ ...st, doctorLast, reviewDebt, execTrust });
+      const st = (await stRes.json()) as Status;
+      setS({ ...st, doctorLast });
     } catch (e) {
-      setS({
-        error: e instanceof Error ? e.message : "Failed to load status.",
-        doctorLast: null,
-        reviewDebt: null,
-        execTrust: null,
-      });
+      setS({ error: e instanceof Error ? e.message : "Failed to load.", doctorLast: null });
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
-  async function action(name: string, extra?: Record<string, unknown>) {
-    setMsg("");
-    const r = await fetch("/api/actions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: name, ...extra }),
-    });
-    const j = await r.json();
-    setMsg(JSON.stringify(j, null, 2));
-    void load();
+  async function syncNow() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const r = await fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ingest" }),
+      });
+      const j = await r.json() as { summary?: string; ok?: boolean };
+      setSyncResult(j.summary ?? (j.ok ? "Sync complete." : "Sync finished — check runs for details."));
+    } catch {
+      setSyncResult("Could not run sync. Is the server running?");
+    } finally {
+      setSyncing(false);
+      void load();
+    }
   }
 
-  if (s?.error && !s.doctorLast) {
+  // Loading state
+  if (!s) {
     return (
-      <div className="max-w-xl rounded-lg border border-red-500/40 bg-red-950/30 p-4 text-sm">
-        {s.error}
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-sm text-[var(--muted)]">Loading…</div>
       </div>
     );
   }
 
-  if (!s) {
-    return <div className="text-[var(--muted)]">Loading brain status…</div>;
-  }
-
   const op = s.operational;
   const pending = op?.pendingWikiCount ?? s.state?.pendingWikiChanges?.length ?? 0;
-  const trust = op?.trustLevel ?? (pending > 0 ? "attention" : "clean");
+  const recentNotes = (op?.recentWiki ?? []).slice(0, 6);
+  const recentRuns  = (s.runs ?? []).slice(0, 4);
+  const noteCount   = s.searchDocs ?? 0;
+  const neverRun    = s.doctorLast?.meta.neverRun ?? true;
+
+  // Format "X minutes ago" / "X hours ago" from ISO string
+  function ago(iso?: string) {
+    if (!iso) return null;
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 2)  return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24)  return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  }
+
+  const lastSync   = ago(s.state?.lastIngestAt ?? undefined);
+  const doctorVerdict = s.doctorLast?.cache?.verdict;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-10">
-      {s.error ? (
-        <div className="rounded-lg border border-amber-500/40 bg-amber-950/25 p-3 text-sm text-amber-100">
-          Status API: {s.error}
-          {s.doctorLast ? (
-            <span className="block pt-1 text-xs text-[var(--muted)]">
-              Cached doctor below may still help — fix env (e.g. SECOND_BRAIN_ROOT) and refresh.
-            </span>
-          ) : null}
-        </div>
-      ) : null}
-      <header className="space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Command center</h1>
-        <p className="max-w-2xl text-sm text-[var(--muted)]">
-          Weekly rhythm: <strong className="text-[var(--foreground)]">ingest → diff → approve</strong>{" "}
-          → review → lint. Wiki changes stay <strong className="text-[var(--foreground)]">untrusted</strong>{" "}
-          until you review the git diff and commit.
+    <div className="mx-auto max-w-3xl space-y-8">
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+          {s.brainName && s.brainName !== "default" ? s.brainName : "My Knowledge Base"}
+        </h1>
+        <p className="mt-1 text-sm text-[var(--muted)]">
+          {noteCount > 0 ? <><span className="font-medium text-[var(--foreground)]">{noteCount}</span> notes indexed</> : "No notes indexed yet"}{" "}
+          {lastSync ? <>· synced <span className="font-medium text-[var(--foreground)]">{lastSync}</span></> : "· never synced"}
+          {s.root ? <> · <span className="font-mono text-xs">{s.root}</span></> : null}
         </p>
-        <p className="font-mono text-xs text-[var(--accent)]">
-          {s.brainName ? `${s.brainName} · ` : ""}
-          {s.root}
-        </p>
-        {s.vaultName ? (
-          <p className="text-xs text-[var(--muted)]">
-            Obsidian vault name:{" "}
-            <span className="font-mono text-[var(--accent)]">{s.vaultName}</span>
-            {s.vaultNameSource ? (
-              <span className="text-[var(--muted)]"> ({s.vaultNameSource})</span>
-            ) : null}
-            {s.vaultNameSource === "default" || s.vaultNameSource === "basename" ? (
-              <span className="ml-1 text-amber-400/90">
-                — set <code className="text-[var(--accent)]">SECOND_BRAIN_VAULT_NAME</code> to match
-                Obsidian if links open the wrong vault.
-              </span>
-            ) : null}
-          </p>
-        ) : null}
-        {s.workspaceRoot ? (
-          <p className="text-xs text-[var(--muted)]">
-            Workspace: <span className="font-mono">{s.workspaceRoot}</span>
-          </p>
-        ) : null}
       </header>
 
-      <section
-        className={`rounded-xl border p-4 ${
-          trust === "attention"
-            ? "border-amber-500/50 bg-amber-950/25"
-            : "border-emerald-800/40 bg-emerald-950/15"
-        }`}
-      >
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-          Trust & review
-        </h2>
-        <p className="mt-2 text-sm">
-          {trust === "attention" ? (
-            <>
-              <span className="font-medium text-amber-200">Attention:</span>{" "}
-              {pending} wiki path(s) have uncommitted changes. Open{" "}
-              <Link href="/diff" className="text-sky-400 underline">
-                Diff
-              </Link>{" "}
-              to approve or reject, then run{" "}
-              <code className="rounded bg-black/30 px-1">brain approve</code> from the repo CLI.
-            </>
-          ) : (
-            <>
-              <span className="font-medium text-emerald-300">Clean working tree</span> for scoped wiki
-              paths — or changes already match HEAD. Keep using Diff after each ingest.
-            </>
-          )}
-        </p>
-        {op?.suggestedCommitMessage ? (
-          <p className="mt-2 font-mono text-xs text-[var(--muted)]">
-            Suggested commit message:{" "}
-            <span className="text-[var(--accent)]">{op.suggestedCommitMessage}</span>
-          </p>
-        ) : null}
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-400">
-          <Link href="/operations">Operations &amp; intelligence</Link>
-          <Link href="/executive">Executive mode</Link>
-          <Link href="/executive-trust">Executive trust</Link>
-          <Link href="/canon-fragility">Canon fragility</Link>
-          <Link href="/review-queue">Review priority</Link>
-          <Link href="/trust">Trust &amp; curation hub</Link>
-          <Link href="/promotion-inbox">Promotion inbox</Link>
-          <Link href="/coverage">Coverage &amp; scorecards</Link>
-          <Link href="/decisions">Decision ledger</Link>
-          <Link href="/compare">Compare wiki pages</Link>
+      {/* ── First-time setup banner ─────────────────────────────────────── */}
+      {neverRun && (
+        <div className="rounded-xl border border-sky-600/40 bg-sky-950/30 px-5 py-4">
+          <p className="text-sm font-medium text-sky-200">👋 Getting started</p>
+          <ol className="mt-2 list-inside list-decimal space-y-1 text-sm text-[var(--muted)]">
+            <li>Drop files into <code className="rounded bg-black/30 px-1 text-xs text-sky-300">raw/</code> — notes, PDFs, anything.</li>
+            <li>Click <strong className="text-[var(--foreground)]">Sync Wiki</strong> below to process them.</li>
+            <li>Browse, search, and ask questions about your notes.</li>
+          </ol>
         </div>
-      </section>
+      )}
 
-      {s.trustHooks ? (
-        <section className="rounded-lg border border-[var(--border)] bg-[var(--card)]/40 px-3 py-2 text-xs text-[var(--muted)]">
-          <span className="font-medium text-[var(--foreground)]">Canon guard tooling:</span> git pre-commit{" "}
-          {s.trustHooks.preCommit ? "on" : "off"}, pre-push {s.trustHooks.prePush ? "on" : "off"}. Ignore list
-          entries: {s.trustHooks.ignoreRuleCount}. Pre-push scans {s.trustHooks.prePushEnabled ? "enabled" : "disabled"}{" "}
-          in settings. Hooks: commit {s.trustHooks.commitWarnOnly ? "warn-only" : "strict — blocks HIGH ATTENTION"}
-          {" · "}
-          push {s.trustHooks.prePushWarnOnly ? "warn-only" : "strict"}.
-        </section>
-      ) : null}
-
-      {s.canonGuard &&
-      (s.canonGuard.maxVerdict !== "ok" || s.canonGuard.highAttentionPaths.length > 0) ? (
-        <section
-          className={`rounded-xl border p-4 ${
-            s.canonGuard.maxVerdict === "high_attention"
-              ? "border-rose-500/45 bg-rose-950/20"
-              : "border-amber-500/40 bg-amber-950/20"
-          }`}
-        >
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Canon guard (last CLI scan)
-          </h2>
-          <p className="mt-2 text-sm text-[var(--foreground)]">{s.canonGuard.summaryLine}</p>
-          <p className="mt-1 font-mono text-xs text-[var(--muted)]">
-            Updated {s.canonGuard.updatedAt.slice(0, 19).replace("T", " ")} · verdict{" "}
-            <span className="text-[var(--accent)]">{s.canonGuard.maxVerdict}</span>
-            {s.canonGuard.highAttentionPaths[0] ? (
-              <>
-                {" "}
-                ·{" "}
-                <span className="text-amber-200/90">
-                  {s.canonGuard.highAttentionPaths.slice(0, 4).join(", ")}
-                  {s.canonGuard.highAttentionPaths.length > 4 ? "…" : ""}
-                </span>
-              </>
-            ) : null}
+      {/* ── 3-step action cards ─────────────────────────────────────────── */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {/* Card 1: Add files */}
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+          <div className="text-2xl">📁</div>
+          <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Add Files</h2>
+          <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
+            Drop notes, PDFs, or links into your <code className="rounded bg-black/30 px-1 text-xs">raw/</code> folder.
           </p>
-          {(s.canonGuard.ignoredNoiseCount ?? 0) > 0 ? (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Last run skipped {s.canonGuard.ignoredNoiseCount} open-noise path(s) (ignore lists; high-trust still
-              scanned).
-              {s.canonGuard.respectIgnore === false ? " Scan used --no-respect-ignore." : ""}
-            </p>
-          ) : null}
-          <p className="mt-2 text-xs text-[var(--muted)]">
-            Run <code className="text-[var(--accent)]">brain canon-guard</code> after editing canon or locked
-            pages in Obsidian or an editor. Cache lives in{" "}
-            <code className="text-[var(--accent)]">.brain/last-canon-guard.json</code>.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
-            <Link href="/canon-council">Canon council</Link>
-            <Link href="/canon-admission">Canon admission</Link>
-            <Link href="/review-session">Review session</Link>
-            <Link href="/trust">Trust hub</Link>
+          <div className="mt-4">
+            <code className="block rounded-lg bg-black/40 px-3 py-2 font-mono text-xs text-[var(--accent)]">
+              {s.root ?? "~/My LLM Wiki"}/raw/
+            </code>
           </div>
-        </section>
-      ) : null}
+        </div>
 
-      {!s.canonGuard && op && pending > 0 ? (
-        <section className="rounded-xl border border-zinc-600/40 bg-zinc-950/30 p-3 text-xs text-[var(--muted)]">
-          <strong className="text-[var(--foreground)]">Tip:</strong> wiki changes pending — run{" "}
-          <code className="text-[var(--accent)]">brain canon-guard</code> before commit if any path is canonical
-          or locked (updates <code className="text-[var(--accent)]">.brain/last-canon-guard.json</code>).
-        </section>
-      ) : null}
-
-      {s.reviewDebt?.level ? (
-        <section
-          className={`rounded-xl border p-4 ${
-            s.reviewDebt.level === "critical" || s.reviewDebt.level === "high"
-              ? "border-amber-600/45 bg-amber-950/20"
-              : "border-[var(--border)] bg-[var(--card)]/50"
-          }`}
-        >
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">Review debt</h2>
-          <p className="mt-2 text-sm capitalize text-[var(--foreground)]">
-            {s.reviewDebt.level}{" "}
-            <span className="text-[var(--muted)]">
-              ·{" "}
-              {typeof s.reviewDebt.score0to100 === "number"
-                ? `~${s.reviewDebt.score0to100}/100`
-                : "—"}{" "}
-              · {s.reviewDebt.trendHint ?? "—"}
-            </span>
+        {/* Card 2: Sync wiki */}
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+          <div className="text-2xl">🔄</div>
+          <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Sync Wiki</h2>
+          <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
+            Turn your raw files into organised, searchable wiki notes.
           </p>
-          {s.reviewDebt.contributors?.[0] ? (
-            <p className="mt-1 text-xs text-[var(--muted)]">
-              Top: {s.reviewDebt.contributors[0].label} ({s.reviewDebt.contributors[0].count})
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
-            <Link href="/executive">Executive · plans</Link>
-            <Link href="/canon-council">Canon council</Link>
-            <Link href="/review-session">Review session</Link>
-          </div>
-        </section>
-      ) : null}
-
-      {s.execTrust?.summaryLine ? (
-        <section className="rounded-xl border border-sky-800/35 bg-sky-950/15 p-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Executive trust (weekly scan)
-          </h2>
-          <p className="mt-2 text-sm capitalize text-[var(--foreground)]">
-            {s.execTrust.overallPosture?.replace(/_/g, " ") ?? "—"}
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{s.execTrust.summaryLine}</p>
-          {s.execTrust.actionTelemetry ? (
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Actions this {s.execTrust.actionTelemetry.windowDays}d:{" "}
-              <span className="text-[var(--foreground)]">
-                {s.execTrust.actionTelemetry.addressedInWindow}/{s.execTrust.actionTelemetry.suggestedCount}
-              </span>{" "}
-              suggested items marked (log-backed).
-            </p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
-            <Link href="/executive-trust">Open control panel</Link>
-            <Link href="/canon-fragility">Fragile trusted pages</Link>
-            <Link href="/review-session">Start review session</Link>
-          </div>
-        </section>
-      ) : null}
-
-      {s.doctorLast ? (
-        <section
-          className={`rounded-xl border p-4 ${
-            s.doctorLast.meta.neverRun
-              ? "border-zinc-600/50 bg-zinc-950/40"
-              : s.doctorLast.cache?.verdict === "blocked"
-                ? "border-red-500/45 bg-red-950/25"
-                : s.doctorLast.cache?.verdict === "warnings"
-                  ? "border-amber-500/45 bg-amber-950/20"
-                  : "border-emerald-800/35 bg-emerald-950/15"
-          }`}
-        >
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Readiness (doctor, cached)
-          </h2>
-          {s.doctorLast.meta.neverRun ? (
-            <p className="mt-2 text-sm text-[var(--muted)]">
-              <strong className="text-[var(--foreground)]">No doctor run yet.</strong> Run{" "}
-              <code className="text-[var(--accent)]">brain doctor</code> once after setup (default writes{" "}
-              <code className="text-[var(--accent)]">.brain/last-doctor.json</code>
-              ). Home reads that file so we do not re-run checks on every refresh.
-            </p>
-          ) : s.doctorLast.cache ? (
-            <>
-              <p className="mt-2 text-sm">{s.doctorLast.cache.readinessLabel}</p>
-              <p className="mt-1 font-mono text-xs text-[var(--muted)]">
-                Last run: {s.doctorLast.cache.generatedAt.slice(0, 19).replace("T", " ")} · vault{" "}
-                <span className="text-[var(--accent)]">{s.doctorLast.cache.vaultName}</span> (
-                {s.doctorLast.cache.vaultNameSource})
-              </p>
-              <p className="mt-1 text-xs text-[var(--muted)]">
-                Fails: {s.doctorLast.cache.failCount} · Warns: {s.doctorLast.cache.warnCount}
-              </p>
-              {s.doctorLast.cache.nextActions[0] ? (
-                <p className="mt-2 text-xs text-[var(--foreground)]">
-                  <span className="text-[var(--muted)]">Top next:</span> {s.doctorLast.cache.nextActions[0]}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <p className="mt-2 text-sm text-[var(--muted)]">Could not read cached doctor result.</p>
-          )}
-          {(s.doctorLast.meta.staleByAge || s.doctorLast.meta.hints.length > 0) && !s.doctorLast.meta.neverRun ? (
-            <ul className="mt-3 list-inside list-disc space-y-1 border-t border-[var(--border)]/60 pt-3 text-xs text-amber-200/95">
-              {s.doctorLast.meta.staleByAge ? (
-                <li>Snapshot may be stale — run `brain doctor` again for a current check.</li>
-              ) : null}
-              {s.doctorLast.meta.hints.map((h, i) => (
-                <li key={i}>{h}</li>
-              ))}
-            </ul>
-          ) : null}
-          {s.doctorLast.meta.error ? (
-            <p className="mt-2 text-xs text-amber-400/90">{s.doctorLast.meta.error}</p>
-          ) : null}
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Link
-              href="/doctor"
-              className="rounded-md bg-violet-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-violet-500"
+          <div className="mt-4 space-y-2">
+            <button
+              type="button"
+              onClick={syncing ? undefined : syncNow}
+              disabled={syncing}
+              className="w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-sky-500 disabled:opacity-60"
             >
-              Doctor detail
-            </Link>
-            <span className="self-center text-xs text-[var(--muted)]">
-              Refresh cache: <code className="text-[var(--accent)]">brain doctor</code> (omit{" "}
-              <code className="text-[var(--accent)]">--no-save</code>)
-            </span>
+              {syncing ? "Syncing…" : "Sync Now"}
+            </button>
+            {pending > 0 && !syncing && (
+              <Link
+                href="/diff"
+                className="block rounded-lg border border-amber-500/50 bg-amber-950/20 px-4 py-2 text-center text-sm text-amber-200 hover:border-amber-400"
+              >
+                {pending} change{pending !== 1 ? "s" : ""} to review →
+              </Link>
+            )}
+            {syncResult && (
+              <p className="text-xs text-emerald-300">{syncResult}</p>
+            )}
           </div>
-        </section>
-      ) : null}
+        </div>
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--card)]/50 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-          Weekly workflow
-        </h2>
-        <ol className="mt-3 list-inside list-decimal space-y-2 text-sm text-[var(--muted)]">
-          <li>Add or update files under raw/ (e.g. raw/inbox/).</li>
-          <li>
-            <strong>Ingest</strong> — synthesizes into wiki/ and refreshes indexes.
-          </li>
-          <li>
-            <strong>Diff</strong> — read every changed path; approve/reject in the UI.
-          </li>
-          <li>
-            <strong>Approve</strong> —{" "}
-            <code className="rounded bg-black/30 px-1">brain approve</code> commits approved paths.
-          </li>
-          <li>
-            <strong>Weekly review</strong> — executive markdown in outputs/reviews/.
-          </li>
-          <li>
-            <strong>Lint</strong> — health report in outputs/health-checks/.
-          </li>
-        </ol>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <ActionBtn onClick={() => action("ingest")}>Run ingest</ActionBtn>
-          <ActionBtn onClick={() => action("weekly-review")}>Run weekly review</ActionBtn>
-          <ActionBtn onClick={() => action("lint")}>Run lint</ActionBtn>
-          <Link
-            href="/diff"
-            className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+        {/* Card 3: Ask questions */}
+        <div className="flex flex-col rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-5">
+          <div className="text-2xl">🔍</div>
+          <h2 className="mt-2 text-base font-semibold text-[var(--foreground)]">Ask Anything</h2>
+          <p className="mt-1 flex-1 text-sm text-[var(--muted)]">
+            Search or ask questions across all your notes.
+          </p>
+          <form
+            className="mt-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (search.trim()) {
+                window.location.href = `/search?q=${encodeURIComponent(search.trim())}`;
+              }
+            }}
           >
-            Open diff ({pending})
-          </Link>
-        </div>
-        {op?.nextActions?.length ? (
-          <ul className="mt-4 space-y-1 border-t border-[var(--border)]/60 pt-4 text-sm text-[var(--muted)]">
-            <li className="text-xs font-semibold uppercase text-[var(--foreground)]">Suggested next</li>
-            {op.nextActions.map((t, i) => (
-              <li key={i}>• {t}</li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Metric
-          label="Last ingest"
-          value={s.state?.lastIngestAt?.slice(0, 19) ?? "—"}
-          stale={!!op?.staleIngest}
-        />
-        <Metric
-          label="Last lint"
-          value={s.state?.lastLintAt?.slice(0, 19) ?? "—"}
-          stale={!!op?.staleLint}
-        />
-        <Metric
-          label="Last weekly review"
-          value={s.state?.lastReviewAt?.slice(0, 19) ?? "—"}
-          stale={(op?.reviewAgeDays ?? 0) > 7}
-        />
-        <Metric label="Search index docs" value={String(s.searchDocs ?? 0)} />
-      </section>
-
-      <section className="grid gap-4 md:grid-cols-2">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-4">
-          <div className="text-xs uppercase text-[var(--muted)]">Graph</div>
-          <div className="mt-2 text-lg font-medium">
-            {s.graphMeta?.nodeCount ?? 0} nodes · {s.graphMeta?.orphans ?? 0} orphans
-          </div>
-        </div>
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/80 p-4">
-          <div className="text-xs uppercase text-[var(--muted)]">Last run summaries</div>
-          <ul className="mt-2 space-y-1 text-xs text-[var(--muted)]">
-            <li>
-              <span className="text-[var(--foreground)]">Ingest:</span>{" "}
-              {op?.lastIngestSummary ?? "—"}
-            </li>
-            <li>
-              <span className="text-[var(--foreground)]">Lint:</span>{" "}
-              {op?.lastLintSummary ?? "—"}
-            </li>
-            <li>
-              <span className="text-[var(--foreground)]">Review:</span>{" "}
-              {op?.lastReviewSummary ?? "—"}
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Quick actions
-          </h2>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <ActionBtn onClick={() => action("ingest")}>Ingest</ActionBtn>
-            <ActionBtn onClick={() => action("ingest", { force: true })}>Ingest (force)</ActionBtn>
-            <ActionBtn onClick={() => action("compile")}>Compile</ActionBtn>
-            <ActionBtn onClick={() => action("lint")}>Lint</ActionBtn>
+            <input
+              type="text"
+              placeholder="What connects…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm text-[var(--foreground)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 focus:ring-sky-500"
+            />
             <Link
               href="/search"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+              className="mt-2 block rounded-lg border border-[var(--border)] px-4 py-2 text-center text-sm text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]"
             >
-              Search
+              Open search →
             </Link>
-            <Link
-              href="/wiki"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
-            >
-              Wiki
-            </Link>
-            <Link
-              href="/operations"
-              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
-            >
-              Operations
-            </Link>
-            <Link
-              href="/doctor"
-              className="rounded-md border border-violet-500/50 px-3 py-2 text-sm text-violet-200 hover:border-violet-400"
-            >
-              Run doctor
+          </form>
+        </div>
+      </div>
+
+      {/* ── Alerts (only show when there's actually something to do) ───── */}
+      {doctorVerdict === "blocked" && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-950/25 px-4 py-3 text-sm">
+          <span className="text-lg">🔴</span>
+          <div>
+            <p className="font-medium text-red-200">Health check found issues that need fixing</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">{s.doctorLast?.cache?.summary}</p>
+            <Link href="/doctor" className="mt-2 inline-block text-xs text-sky-400 hover:underline">
+              View details →
             </Link>
           </div>
-          {msg ? (
-            <pre className="mt-4 max-h-48 overflow-auto rounded-md bg-black/40 p-3 text-xs text-emerald-200">
-              {msg}
-            </pre>
-          ) : null}
         </div>
-
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Recent runs
-          </h2>
-          <ul className="mt-4 space-y-2 text-sm">
-            {(s.runs ?? []).map((r, i) => (
-              <li
-                key={i}
-                className="flex justify-between gap-4 border-b border-[var(--border)]/60 pb-2"
-              >
-                <span className="text-[var(--muted)]">{r.kind}</span>
-                <span className="flex-1 truncate text-right">{r.summary}</span>
-                <span className={r.ok ? "text-emerald-400" : "text-amber-400"}>
-                  {r.ok ? "ok" : "warn"}
-                </span>
-              </li>
-            ))}
-          </ul>
+      )}
+      {doctorVerdict === "warnings" && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-950/20 px-4 py-3 text-sm">
+          <span className="text-lg">🟡</span>
+          <div>
+            <p className="font-medium text-amber-200">Health check found a few warnings</p>
+            <p className="mt-0.5 text-xs text-[var(--muted)]">{s.doctorLast?.cache?.summary}</p>
+            <Link href="/doctor" className="mt-2 inline-block text-xs text-sky-400 hover:underline">
+              View details →
+            </Link>
+          </div>
         </div>
-      </section>
+      )}
 
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Recent wiki edits (mtime)
-          </h2>
-          <ul className="mt-3 space-y-1 font-mono text-xs text-[var(--accent)]">
-            {(op?.recentWiki ?? []).map((f) => (
-              <li key={f.path}>
-                <Link href={`/wiki?path=${encodeURIComponent(f.path)}`} className="hover:underline">
-                  {f.path}
+      {/* ── Stats row ──────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Notes" value={String(noteCount)} />
+        <Stat
+          label="Last synced"
+          value={lastSync ?? "never"}
+          stale={!!op?.staleIngest}
+        />
+        <Stat
+          label="Health check"
+          value={
+            neverRun ? "never run"
+              : doctorVerdict === "ready" ? "✓ ready"
+              : doctorVerdict === "warnings" ? "⚠ warnings"
+              : doctorVerdict === "blocked" ? "✗ blocked"
+              : "—"
+          }
+          stale={doctorVerdict === "blocked"}
+        />
+        <Stat
+          label="Graph nodes"
+          value={s.graphMeta?.nodeCount ? String(s.graphMeta.nodeCount) : "—"}
+        />
+      </div>
+
+      {/* ── Recent Notes ───────────────────────────────────────────────── */}
+      {recentNotes.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">Recent Notes</h2>
+            <Link href="/wiki" className="text-xs text-sky-400 hover:underline">
+              Browse all →
+            </Link>
+          </div>
+          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]/60">
+            {recentNotes.map((f) => {
+              const name = f.path.replace(/^wiki\//, "").replace(/\.md$/, "");
+              return (
+                <Link
+                  key={f.path}
+                  href={`/wiki?path=${encodeURIComponent(f.path)}`}
+                  className="flex items-center gap-3 px-4 py-3 text-sm transition hover:bg-[var(--ring)]/20"
+                >
+                  <span className="text-base">📄</span>
+                  <span className="flex-1 text-[var(--foreground)]">{name}</span>
+                  <span className="font-mono text-xs text-[var(--muted)]">
+                    {ago(new Date(f.mtimeMs).toISOString())}
+                  </span>
                 </Link>
-              </li>
-            ))}
-            {!op?.recentWiki?.length ? <li className="text-[var(--muted)]">—</li> : null}
-          </ul>
-        </div>
-        <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-            Recent outputs
-          </h2>
-          <ul className="mt-3 space-y-1 font-mono text-xs text-[var(--accent)]">
-            {(op?.recentOutputs ?? []).map((f) => (
-              <li key={f.path}>
-                <span className="text-[var(--muted)]">{f.path}</span>
-              </li>
-            ))}
-            {!op?.recentOutputs?.length ? <li className="text-[var(--muted)]">—</li> : null}
-          </ul>
-        </div>
-      </section>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--card)]/60 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
-          Log tail
-        </h2>
-        <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap font-mono text-xs text-[var(--muted)]">
-          {s.logTail ?? "—"}
-        </pre>
-      </section>
+      {/* ── Recent Activity ────────────────────────────────────────────── */}
+      {recentRuns.length > 0 && (
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[var(--foreground)]">Recent Activity</h2>
+            <Link href="/runs" className="text-xs text-sky-400 hover:underline">
+              View all →
+            </Link>
+          </div>
+          <div className="divide-y divide-[var(--border)]/50 rounded-xl border border-[var(--border)] bg-[var(--card)]/60">
+            {recentRuns.map((r, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-3 text-sm">
+                <span className={`h-2 w-2 rounded-full ${r.ok ? "bg-emerald-400" : "bg-amber-400"}`} />
+                <span className="flex-1 truncate text-[var(--muted)]">{r.summary || r.kind}</span>
+                <span className="font-mono text-xs text-[var(--muted)]">
+                  {r.startedAt ? ago(r.startedAt) : r.kind}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      {s.workspaceRoot ? (
-        <p className="text-center text-xs text-[var(--muted)]">
-          <Link href="/workspace" className="text-sky-400 hover:underline">
-            Workspace overview
-          </Link>
-          {" · "}
-          <Link href="/promotions" className="text-sky-400 hover:underline">
-            Promotions
-          </Link>
-        </p>
-      ) : null}
+      {/* ── Empty state (no notes, no runs) ────────────────────────────── */}
+      {recentNotes.length === 0 && recentRuns.length === 0 && !neverRun && (
+        <div className="rounded-xl border border-dashed border-[var(--border)] px-6 py-10 text-center">
+          <p className="text-[var(--muted)]">Nothing here yet — add files to <code className="text-xs text-sky-400">raw/</code> and click Sync.</p>
+        </div>
+      )}
+
     </div>
   );
 }
 
-function Metric({
-  label,
-  value,
-  stale,
-}: {
-  label: string;
-  value: string;
-  stale?: boolean;
-}) {
+// ─── Small helpers ───────────────────────────────────────────────────────────
+
+function Stat({ label, value, stale }: { label: string; value: string; stale?: boolean }) {
   return (
     <div
-      className={`rounded-xl border p-4 ${
-        stale ? "border-amber-600/40 bg-amber-950/20" : "border-[var(--border)] bg-[var(--card)]/80"
+      className={`rounded-xl border p-3 ${
+        stale
+          ? "border-amber-600/40 bg-amber-950/20"
+          : "border-[var(--border)] bg-[var(--card)]/80"
       }`}
     >
-      <div className="text-xs uppercase tracking-wide text-[var(--muted)]">{label}</div>
-      <div className="mt-2 text-lg font-medium">{value}</div>
-      {stale ? (
-        <div className="mt-1 text-xs text-amber-400/90">&gt; 7d — run a fresh pass</div>
-      ) : null}
+      <div className="text-[10px] uppercase tracking-wide text-[var(--muted)]">{label}</div>
+      <div className="mt-1 text-sm font-medium text-[var(--foreground)]">{value}</div>
     </div>
-  );
-}
-
-function ActionBtn({
-  children,
-  onClick,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="rounded-md bg-sky-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500"
-    >
-      {children}
-    </button>
   );
 }

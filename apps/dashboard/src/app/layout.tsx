@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Second Brain AI — Dashboard",
-  description: "Local-first LLM wiki operations console",
+  title: "My Knowledge Base",
+  description: "Your personal AI-powered wiki",
 };
 
 export default function RootLayout({
