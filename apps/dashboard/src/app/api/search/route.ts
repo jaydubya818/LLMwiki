@@ -8,6 +8,7 @@ import {
   loadSearchIndex,
   searchIndex,
   searchAcrossBrains,
+  enrichSearchHitsWithFreshness,
 } from "@second-brain/core";
 
 export async function GET(req: Request) {
@@ -33,7 +34,8 @@ export async function GET(req: Request) {
     if (scope === "wiki") kinds = ["wiki"];
     else if (scope === "raw") kinds = ["raw"];
     else if (scope === "output") kinds = ["output"];
-    const hits = searchIndex(idx, q, { kinds }, 50);
+    const rawHits = searchIndex(idx, q, { kinds }, 50);
+    const hits = await enrichSearchHitsWithFreshness(cfg, rawHits, { maxWiki: 24 });
     return NextResponse.json({
       mode: "single" as const,
       brainName: cfg.brainName,

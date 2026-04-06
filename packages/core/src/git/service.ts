@@ -2,6 +2,7 @@ import { simpleGit } from "simple-git";
 import type { StatusResult } from "simple-git";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Buffer } from "node:buffer";
 import type { BrainConfig } from "../config.js";
 
 function normPrefix(prefix: string): string {
@@ -23,6 +24,30 @@ export async function getWikiDiffForBrain(cfg: BrainConfig): Promise<string> {
   const p = normPrefix(cfg.wikiGitPrefix);
   const diff = await git.diff(["--", p]);
   return diff;
+}
+
+/** Unified diff for a single repo-relative wiki path (empty if unchanged vs HEAD). */
+export async function getWikiFileDiffForBrain(
+  cfg: BrainConfig,
+  repoRelativePath: string
+): Promise<string> {
+  const git = simpleGit(cfg.gitRoot);
+  return git.diff(["--", repoRelativePath]);
+}
+
+/** File contents at `HEAD` for a repo-relative path (empty if missing / new file). */
+export async function getWikiFileAtHead(
+  cfg: BrainConfig,
+  repoRelativePath: string
+): Promise<string> {
+  const git = simpleGit(cfg.gitRoot);
+  try {
+    const blob = await git.show([`HEAD:${repoRelativePath}`]);
+    if (Buffer.isBuffer(blob)) return blob.toString("utf8");
+    return typeof blob === "string" ? blob : "";
+  } catch {
+    return "";
+  }
 }
 
 export async function getWikiStatusFilesForBrain(cfg: BrainConfig): Promise<

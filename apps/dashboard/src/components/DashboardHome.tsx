@@ -49,6 +49,33 @@ type DoctorLastPayload = {
   };
 };
 
+type ReviewDebtUi = {
+  level?: string;
+  score0to100?: number;
+  trendHint?: string;
+  contributors?: { label: string; count: number }[];
+};
+
+type CanonGuardStatus = {
+  updatedAt: string;
+  maxVerdict: "ok" | "warn" | "high_attention";
+  summaryLine: string;
+  findingCount: number;
+  highAttentionPaths: string[];
+  paths: string[];
+  ignoredNoiseCount?: number;
+  respectIgnore?: boolean;
+};
+
+type TrustHooksStatus = {
+  preCommit: boolean;
+  prePush: boolean;
+  ignoreRuleCount: number;
+  commitWarnOnly: boolean;
+  prePushWarnOnly: boolean;
+  prePushEnabled: boolean;
+};
+
 type Status = {
   root?: string;
   brainName?: string;
@@ -56,6 +83,8 @@ type Status = {
   vaultNameSource?: string;
   workspaceRoot?: string | null;
   gitRoot?: string;
+  canonGuard?: CanonGuardStatus | null;
+  trustHooks?: TrustHooksStatus;
   state?: {
     lastIngestAt?: string;
     lastCompileAt?: string;
@@ -69,6 +98,7 @@ type Status = {
   logTail?: string;
   operational?: Operational;
   doctorLast?: DoctorLastPayload | null;
+  reviewDebt?: ReviewDebtUi | null;
   error?: string;
 };
 
@@ -77,20 +107,55 @@ export function DashboardHome() {
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
-    const [stRes, lastRes] = await Promise.all([
-      fetch("/api/status"),
-      fetch("/api/doctor-last"),
-    ]);
-    const st = await stRes.json();
-    const doctorLast = lastRes.ok ? ((await lastRes.json()) as DoctorLastPayload) : null;
-    if (!stRes.ok) {
+    try {
+      const [stRes, lastRes, debtRes] = await Promise.all([
+        fetch("/api/status"),
+        fetch("/api/doctor-last"),
+        fetch("/api/review-debt"),
+      ]);
+      let doctorLast: DoctorLastPayload | null = null;
+      if (lastRes.ok) {
+        try {
+          doctorLast = (await lastRes.json()) as DoctorLastPayload;
+        } catch {
+          doctorLast = null;
+        }
+      }
+      let reviewDebt: ReviewDebtUi | null = null;
+      if (debtRes.ok) {
+        try {
+          const dj = (await debtRes.json()) as ReviewDebtUi;
+          if (dj.level) reviewDebt = dj;
+        } catch {
+          reviewDebt = null;
+        }
+      }
+      let st: Status;
+      try {
+        st = (await stRes.json()) as Status;
+      } catch (e) {
+        setS({
+          error: e instanceof Error ? e.message : "Failed to load status.",
+          doctorLast,
+          reviewDebt,
+        });
+        return;
+      }
+      if (!stRes.ok) {
+        setS({
+          error: typeof st.error === "string" ? st.error : "Could not load status.",
+          doctorLast,
+          reviewDebt,
+        });
+        return;
+      }
+      setS({ ...st, doctorLast, reviewDebt });
+    } catch (e) {
       setS({
-        error: typeof st.error === "string" ? st.error : "Could not load status.",
-        doctorLast,
+        error: e instanceof Error ? e.message : "Failed to load status.",
+        doctorLast: null,
       });
-      return;
     }
-    setS({ ...st, doctorLast });
   }, []);
 
   useEffect(() => {
@@ -204,7 +269,94 @@ export function DashboardHome() {
             <span className="text-[var(--accent)]">{op.suggestedCommitMessage}</span>
           </p>
         ) : null}
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-sky-400">
+          <Link href="/operations">Operations &amp; intelligence</Link>
+          <Link href="/executive">Executive mode</Link>
+          <Link href="/review-queue">Review priority</Link>
+          <Link href="/trust">Trust &amp; curation hub</Link>
+          <Link href="/promotion-inbox">Promotion inbox</Link>
+          <Link href="/coverage">Coverage &amp; scorecards</Link>
+          <Link href="/decisions">Decision ledger</Link>
+          <Link href="/compare">Compare wiki pages</Link>
+        </div>
       </section>
+
+      {s.canonGuard &&
+      (s.canonGuard.maxVerdict !== "ok" || s.canonGuard.highAttentionPaths.length > 0) ? (
+        <section
+          className={`rounded-xl border p-4 ${
+            s.canonGuard.maxVerdict === "high_attention"
+              ? "border-rose-500/45 bg-rose-950/20"
+              : "border-amber-500/40 bg-amber-950/20"
+          }`}
+        >
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">
+            Canon guard (last CLI scan)
+          </h2>
+          <p className="mt-2 text-sm text-[var(--foreground)]">{s.canonGuard.summaryLine}</p>
+          <p className="mt-1 font-mono text-xs text-[var(--muted)]">
+            Updated {s.canonGuard.updatedAt.slice(0, 19).replace("T", " ")} · verdict{" "}
+            <span className="text-[var(--accent)]">{s.canonGuard.maxVerdict}</span>
+            {s.canonGuard.highAttentionPaths[0] ? (
+              <>
+                {" "}
+                ·{" "}
+                <span className="text-amber-200/90">
+                  {s.canonGuard.highAttentionPaths.slice(0, 4).join(", ")}
+                  {s.canonGuard.highAttentionPaths.length > 4 ? "…" : ""}
+                </span>
+              </>
+            ) : null}
+          </p>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Run <code className="text-[var(--accent)]">brain canon-guard</code> after editing canon or locked
+            pages in Obsidian or an editor. Cache lives in{" "}
+            <code className="text-[var(--accent)]">.brain/last-canon-guard.json</code>.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
+            <Link href="/canon-council">Canon council</Link>
+            <Link href="/canon-admission">Canon admission</Link>
+            <Link href="/review-session">Review session</Link>
+            <Link href="/trust">Trust hub</Link>
+          </div>
+        </section>
+      ) : null}
+
+      {!s.canonGuard && op && pending > 0 ? (
+        <section className="rounded-xl border border-zinc-600/40 bg-zinc-950/30 p-3 text-xs text-[var(--muted)]">
+          <strong className="text-[var(--foreground)]">Tip:</strong> wiki changes pending — run{" "}
+          <code className="text-[var(--accent)]">brain canon-guard</code> before commit if any path is canonical
+          or locked (updates <code className="text-[var(--accent)]">.brain/last-canon-guard.json</code>).
+        </section>
+      ) : null}
+
+      {s.reviewDebt?.level ? (
+        <section
+          className={`rounded-xl border p-4 ${
+            s.reviewDebt.level === "critical" || s.reviewDebt.level === "high"
+              ? "border-amber-600/45 bg-amber-950/20"
+              : "border-[var(--border)] bg-[var(--card)]/50"
+          }`}
+        >
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-[var(--muted)]">Review debt</h2>
+          <p className="mt-2 text-sm capitalize text-[var(--foreground)]">
+            {s.reviewDebt.level}{" "}
+            <span className="text-[var(--muted)]">
+              · ~{s.reviewDebt.score0to100}/100 · {s.reviewDebt.trendHint ?? "—"}
+            </span>
+          </p>
+          {s.reviewDebt.contributors?.[0] ? (
+            <p className="mt-1 text-xs text-[var(--muted)]">
+              Top: {s.reviewDebt.contributors[0].label} ({s.reviewDebt.contributors[0].count})
+            </p>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-2 text-xs text-sky-400">
+            <Link href="/executive">Executive · plans</Link>
+            <Link href="/canon-council">Canon council</Link>
+            <Link href="/review-session">Review session</Link>
+          </div>
+        </section>
+      ) : null}
 
       {s.doctorLast ? (
         <section
@@ -386,6 +538,12 @@ export function DashboardHome() {
               className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
             >
               Wiki
+            </Link>
+            <Link
+              href="/operations"
+              className="rounded-md border border-[var(--border)] px-3 py-2 text-sm hover:border-[var(--accent)]"
+            >
+              Operations
             </Link>
             <Link
               href="/doctor"

@@ -14,6 +14,8 @@ import {
   persistDoctorMarkdownAndCache,
   type DoctorSavedArtifacts,
 } from "./cache.js";
+import { readGovernanceSettings } from "../governance/governance-settings.js";
+import { detectCanonGuardHookInstallation, readLastCanonGuardCache } from "../trust/canon-guard.js";
 
 export type DoctorCheckStatus = "pass" | "warn" | "fail";
 
@@ -567,6 +569,95 @@ export async function runDoctor(
   if (obsFallback || source === "basename") {
     nextActions.push(
       "Set SECOND_BRAIN_VAULT_NAME in shell or vault .env to your Obsidian vault name (Settings → About → Vault name)."
+    );
+  }
+
+  try {
+    const gov = await readGovernanceSettings(paths);
+    if (!gov.canonGuardEnabled) {
+      add(
+        sections,
+        "H. Canon guard (off-dashboard trust)",
+        "canon_guard_enabled",
+        "pass",
+        "Canon guard summary in doctor is disabled (canonGuardEnabled: false). CLI `brain canon-guard` still runs."
+      );
+    } else {
+      const cgCache = await readLastCanonGuardCache(paths);
+      if (!cgCache) {
+        add(
+          sections,
+          "H. Canon guard (off-dashboard trust)",
+          "canon_guard_cache",
+          "warn",
+          "No `.brain/last-canon-guard.json` yet — run `brain canon-guard` after editing locked or canonical wiki paths outside the dashboard."
+        );
+        nextActions.push("Before committing high-trust edits from Obsidian or an editor, run: brain canon-guard");
+      } else {
+        const v = cgCache.maxVerdict;
+        const st: DoctorCheckStatus =
+          v === "high_attention" ? "warn" : v === "warn" ? "warn" : "pass";
+        const hi =
+          cgCache.highAttentionPaths.length > 0
+            ? ` High-attention paths: ${cgCache.highAttentionPaths.slice(0, 5).join(", ")}${
+                cgCache.highAttentionPaths.length > 5 ? "…" : ""
+              }.`
+            : "";
+        add(
+          sections,
+          "H. Canon guard (off-dashboard trust)",
+          "canon_guard_last",
+          st,
+          `${cgCache.summaryLine} (last run ${cgCache.updatedAt.slice(0, 19).replace("T", " ")}).${hi}`
+        );
+        if (v !== "ok") {
+          nextActions.push(
+            "Re-run `brain canon-guard`, add snapshots or a governance trail if needed; see Dashboard → Canon council / Canon admission."
+          );
+        }
+      }
+    }
+
+    let hooks = { preCommit: false, prePush: false };
+    try {
+      hooks = await detectCanonGuardHookInstallation(cfg.gitRoot);
+    } catch {
+      /* */
+    }
+    const igRules =
+      (gov.canonGuardIgnorePrefixes?.length ?? 0) + (gov.canonGuardIgnorePaths?.length ?? 0);
+    add(
+      sections,
+      "H. Canon guard (off-dashboard trust)",
+      "canon_guard_hooks",
+      hooks.preCommit || hooks.prePush ? "pass" : "warn",
+      hooks.preCommit || hooks.prePush
+        ? `Git hooks: pre-commit ${hooks.preCommit ? "on" : "off"}, pre-push ${hooks.prePush ? "on" : "off"}. Run \`brain install-hooks\` to add or update.`
+        : "No canon-guard git hooks detected — optional; use `brain install-hooks` (pre-commit and/or pre-push)."
+    );
+    add(
+      sections,
+      "H. Canon guard (off-dashboard trust)",
+      "canon_guard_ignore_lists",
+      "pass",
+      igRules > 0
+        ? `${igRules} ignore rule entry/entries — noisy open paths only; high-trust pages still scanned.`
+        : "No canonGuardIgnorePrefixes / IgnorePaths — all changed wiki paths are candidates (before open-page skip)."
+    );
+    const strict: DoctorCheckStatus =
+      !gov.canonGuardHookWarnOnly || !gov.canonGuardPrePushWarnOnly ? "warn" : "pass";
+    const strictMsg =
+      !gov.canonGuardHookWarnOnly || !gov.canonGuardPrePushWarnOnly
+        ? `Strict hook mode: pre-commit ${gov.canonGuardHookWarnOnly ? "warn-only" : "blocks HIGH ATTENTION"} · pre-push ${gov.canonGuardPrePushWarnOnly ? "warn-only" : "blocks HIGH ATTENTION"}.`
+        : "Hooks are warn-only for HIGH ATTENTION (default) — set canonGuardHookWarnOnly / canonGuardPrePushWarnOnly to false to block.";
+    add(sections, "H. Canon guard (off-dashboard trust)", "canon_guard_strict_hooks", strict, strictMsg);
+  } catch (e) {
+    add(
+      sections,
+      "H. Canon guard (off-dashboard trust)",
+      "canon_guard_read",
+      "warn",
+      `Could not read canon-guard cache or governance settings: ${String(e)}`
     );
   }
 

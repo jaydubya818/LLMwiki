@@ -9,6 +9,9 @@ import {
   readReviewState,
   listRecentMarkdown,
   suggestWikiCommitMessage,
+  readLastCanonGuardCache,
+  readGovernanceSettings,
+  detectCanonGuardHookInstallation,
 } from "@second-brain/core";
 import fs from "node:fs/promises";
 
@@ -35,6 +38,9 @@ export async function GET() {
       recentWiki,
       recentOutputs,
       suggestedCommitMessage,
+      canonGuardCache,
+      governanceSettings,
+      hookDetect,
     ] = await Promise.all([
       readState(paths),
       listRuns(paths, 16),
@@ -46,6 +52,9 @@ export async function GET() {
       listRecentMarkdown(root, "wiki", 10),
       listRecentMarkdown(root, "outputs", 8),
       suggestWikiCommitMessage(paths),
+      readLastCanonGuardCache(paths),
+      readGovernanceSettings(paths),
+      detectCanonGuardHookInstallation(cfg.gitRoot),
     ]);
 
     let graphMeta: Record<string, unknown> = {};
@@ -111,6 +120,28 @@ export async function GET() {
       searchDocs: index?.docs?.length ?? 0,
       graphMeta,
       logTail: logTail.split("\n").slice(-12).join("\n"),
+      canonGuard: canonGuardCache
+        ? {
+            updatedAt: canonGuardCache.updatedAt,
+            maxVerdict: canonGuardCache.maxVerdict,
+            summaryLine: canonGuardCache.summaryLine,
+            findingCount: canonGuardCache.findingCount,
+            highAttentionPaths: canonGuardCache.highAttentionPaths,
+            paths: canonGuardCache.paths,
+            ignoredNoiseCount: canonGuardCache.ignoredNoiseCount,
+            respectIgnore: canonGuardCache.respectIgnore,
+          }
+        : null,
+      trustHooks: {
+        preCommit: hookDetect.preCommit,
+        prePush: hookDetect.prePush,
+        ignoreRuleCount:
+          (governanceSettings.canonGuardIgnorePrefixes?.length ?? 0) +
+          (governanceSettings.canonGuardIgnorePaths?.length ?? 0),
+        commitWarnOnly: governanceSettings.canonGuardHookWarnOnly,
+        prePushWarnOnly: governanceSettings.canonGuardPrePushWarnOnly,
+        prePushEnabled: governanceSettings.enablePrePushCanonGuard,
+      },
       operational: {
         pendingWikiCount: pendingCount,
         pendingPaths: pendingPaths.slice(0, 40),

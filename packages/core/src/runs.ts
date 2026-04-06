@@ -22,6 +22,15 @@ export interface RunRecord {
   summary: string;
   details?: Record<string, unknown>;
   errors?: string[];
+  /** v2 trust: files created or modified by this run (repo-relative paths). */
+  changedFiles?: string[];
+  /** v2: paths considered as inputs (e.g. raw files for ingest). */
+  inputsConsidered?: string[];
+  suggestedCommitMessage?: string;
+  linkedOutputs?: string[];
+  lineageIds?: string[];
+  /** Human-readable notes for replay (warnings, skipped locked pages, etc.). */
+  trustNotes?: string[];
 }
 
 export async function writeRun(
@@ -41,10 +50,34 @@ export async function writeRun(
     finishedAt: record.finishedAt,
     details: record.details,
     errors: record.errors,
+    changedFiles: record.changedFiles,
+    inputsConsidered: record.inputsConsidered,
+    suggestedCommitMessage: record.suggestedCommitMessage,
+    linkedOutputs: record.linkedOutputs,
+    lineageIds: record.lineageIds,
+    trustNotes: record.trustNotes,
   };
   const file = path.join(paths.runsDir, `${full.startedAt.slice(0, 10)}-${full.kind}-${full.id}.json`);
   await fs.writeFile(file, JSON.stringify(full, null, 2), "utf8");
   return full;
+}
+
+export async function getRunById(
+  paths: BrainPaths,
+  id: string
+): Promise<RunRecord | null> {
+  try {
+    const files = await fs.readdir(paths.runsDir);
+    for (const f of files) {
+      if (!f.endsWith(".json")) continue;
+      const raw = await fs.readFile(path.join(paths.runsDir, f), "utf8");
+      const rec = JSON.parse(raw) as RunRecord;
+      if (rec.id === id) return rec;
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 export async function listRuns(paths: BrainPaths, limit = 50): Promise<RunRecord[]> {
@@ -53,8 +86,15 @@ export async function listRuns(paths: BrainPaths, limit = 50): Promise<RunRecord
     const jsonFiles = files.filter((f) => f.endsWith(".json")).sort().reverse();
     const out: RunRecord[] = [];
     for (const f of jsonFiles.slice(0, limit)) {
-      const raw = await fs.readFile(path.join(paths.runsDir, f), "utf8");
-      out.push(JSON.parse(raw) as RunRecord);
+      try {
+        const raw = await fs.readFile(path.join(paths.runsDir, f), "utf8");
+        const rec = JSON.parse(raw) as RunRecord;
+        if (typeof rec.id === "string" && typeof rec.kind === "string") {
+          out.push(rec);
+        }
+      } catch {
+        /* skip non-run JSON artifacts */
+      }
     }
     return out;
   } catch {

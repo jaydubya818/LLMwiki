@@ -5,6 +5,12 @@ A **local-first** personal knowledge OS: immutable `raw/` sources are compiled i
 - **Canonical storage**: Markdown + folders (Obsidian-friendly).
 - **Trust boundary**: Git diffs on `wiki/` before commit.
 - **No vector DB** and **no cloud backend** in v1.
+- **v2 trust pass**: claim trace sidecars (`.brain/trace/`), local **promotion inbox** (`.brain/promotion-inbox.json`), **coverage gaps** + **domain scorecards**, **decision ledger** (`.brain/decision-ledger.json` + `wiki/decisions/INDEX.md`), **freshness heuristics**, **run replay** fields on `.brain/runs/*.json`, **canonical page locks** via `wiki_edit_policy` / `canonical` frontmatter (ingest proposes `.brain/proposed-wiki-updates/` instead of silent merge), **comparative synthesis**, and **prompt-to-output lineage** (`.brain/lineage/*.json` + `lineage_id` in outputs).
+- **v2 operational intelligence** (single-brain): file-backed review queues and explainability signals — **unsupported claim queue**, **conflict resolver**, **page quality** (score + reasons), **source→wiki trace** (`.brain/source-lineage.json`), **knowledge drift** watchlist, **open loops** scraper, **relationship hub** markdown (`wiki/relationship-hub.md` + optional folder INDEXes), **executive snapshot**, **synthesis coverage heatmap**, and **review priority queue**. Refresh via dashboard **Operations** or `brain operational` / `brain operational refresh`. Interpret as **triage hints**, not automated truth.
+- **v2/v3 governance pass** (single-brain): **canon promotion workflow** (`.brain/canon-promotions.json` + proposals only), **review SLA hints** (`.brain/review-sla.json`), **decision impact map**, **steward digests** + **quarterly reviews** under `outputs/reviews/`, **evidence change alerts**, **snapshot bundles**, **resolution quality** heuristics, **canon drift watchlist**, **review session mode**, and **`GET/POST /api/governance`**. Refreshed as part of **`brain lint`** and **`brain operational refresh`**. See **`docs/GOVERNANCE.md`** for cadence and philosophy.
+- **Trust & curation v2** (single-brain, same refresh chain): **canonical review board** (`.brain/canonical-board.json`), **resolution memory** (`.brain/resolutions.json`), **evidence density** (`.brain/evidence-density.json`), **drift→decision bridge** (`.brain/drift-decision-links.json`), **domain steward** (`/steward`, digest markdown), **human-review index** (`.brain/human-review.json` + frontmatter), **source supersession** (`.brain/source-supersession.json`), **review packet** (`outputs/reviews/review-packet-*.md`), snapshots (**`brain snapshot`** / existing bundle machinery), and **cross-signal correlation** (`.brain/cross-signal-correlation.json`). Dashboard: **`/canonical-board`**, **`/resolutions`**, **`/cross-signal`**, **`/steward`**. Details and interpretation limits in **`docs/GOVERNANCE.md`** § *Trust & curation v2*.
+- **Executive curation pass** (single-brain, end of operational refresh): **canon council** (`.brain/canon-council.json`), **review debt** (`.brain/review-debt.json`), **QoQ diff** (`outputs/reviews/quarter-diff-*.md`), **decision sunset** (`.brain/decision-sunset.json`), **strategic themes** (`.brain/strategic-themes.json` + optional `wiki/work/strategic-themes.md`), **confidence history** (`.brain/confidence-history.json`), **human overrides** (`.brain/human-overrides.json`), **canon admission** (`.brain/canon-admission.json`), **review plans** (`outputs/reviews/review-plan-*.md`), **annual review** (`outputs/reviews/annual-review-*.md`). Dashboard: **`/canon-council`**, **`/decision-sunset`**, **`/strategic-themes`**, **`/qoq-diff`**, **`/human-overrides`**, **`/canon-admission`**, plus Home / Executive / wiki confidence panel. See **`docs/GOVERNANCE.md`** for cadence and CLI (`brain canon-council`, `brain review-debt`, `brain qoq-diff`, `brain annual-review`, `brain review-plan`, `brain overrides`, …).
+- **Governance intent capture** (single-brain, dashboard): key review actions also append **`.brain/human-overrides.json`**, **`governance-action-log.json`**, optional **council minutes** (`outputs/reviews/canon-council-minutes-*.md` / rolling log), **snapshot guard** on canon promotion materialize — tunable via **`.brain/governance-settings.json`** (see **`governance-settings.example.json`**). Details: **`docs/GOVERNANCE.md`** § *Human intent capture and audit trail*.
 
 ## Repository layout
 
@@ -114,17 +120,41 @@ Without `OPENAI_API_KEY`, ingest uses **heuristic** extraction (still updates wi
 | `brain candidate …` | Mark a file as promotion candidate |
 | `brain search-all "q"` | Search every brain (workspace only) |
 | `brain doctor [--json] [--no-save]` | Vault health diagnostic (pass/warn/fail); **with save** (default): writes `outputs/reports/doctor-*.md` and **`.brain/last-doctor.json`** for the dashboard. **`--no-save`**: skips both the markdown report and the cache file. |
+| `brain canon-guard [--json] [--no-save] [--staged-only \| --unstaged-only] [--hook] [wiki paths…]` | Warn when canon/locked wiki paths change in git without recent snapshots or governance trail; writes **`.brain/last-canon-guard.json`** (unless **`--no-save`**). **`--hook`**: pre-commit mode — respects **`canonGuardHookWarnOnly`** in governance settings. See **`docs/GOVERNANCE.md`**. |
+| `brain install-hooks` | Install **`pre-commit`** to run **`brain canon-guard --hook`** (warn-only by default). |
 | `brain init [--target dir]` | Legacy: scaffold a **standalone** brain folder + git init |
 | `brain ingest [--force]` | Scan `raw/`, update wiki, INDEX/dashboard markers, hashes, graph, search index, `log.md` |
 | `brain compile` | Rebuild `graph.json` + `search-index.json` |
 | `brain ask "…" [--promote]` | Answer from wiki context → `outputs/reports/` |
 | `brain review` | Executive weekly markdown → `outputs/reviews/` |
-| `brain lint` | Health report → `outputs/health-checks/` |
+| `brain lint` | Health report → `outputs/health-checks/`; then **operational + governance JSON** refresh (trust queues, SLA, watchlist, etc.) |
 | `brain video` | Daily script + `videos/daily_videos.md`; HeyGen if configured |
 | `brain graph` | Rebuild graph only |
 | `brain diff` | Show `git diff` for `wiki/` |
 | `brain approve [--all] [-m msg]` | Commit approved paths from review state, or all wiki |
 | `brain output <kind> "<topic>"` | `brief`, `compare`, `project-summary`, `research`, etc. |
+| `brain compare <wiki-path…>` | Comparative synthesis → `outputs/comparisons/` (optional `--inbox`) |
+| `brain operational` / `brain operational refresh` | Rebuild operational JSON **and governance artifacts** (same chain as end of `brain lint`) |
+| `brain governance-refresh` | Same as `brain operational refresh` (explicit alias for governance-focused workflows) |
+| `brain steward-digest [--domain <n> \| --all]` | Domain briefing markdown → `outputs/reviews/steward-digest-*.md` |
+| `brain quarterly-review` | Quarterly reflective report → `outputs/reviews/quarterly-review-*.md` |
+| `brain review-session [--rebuild]` | Show or rebuild `.brain/review-session-state.json` queue |
+| `brain canonical-board` | TSV rows from `.brain/canonical-board.json` (after refresh) |
+| `brain canon-council` | TSV rows from `.brain/canon-council.json` (after refresh) |
+| `brain review-debt` | Print review debt summary |
+| `brain decision-sunset` | TSV decision sunset hints |
+| `brain qoq-diff --from <md> --to <md>` | Write `outputs/reviews/quarter-diff-*.md` |
+| `brain annual-review` | Write `outputs/reviews/annual-review-*.md` |
+| `brain review-plan [--minutes 10\|30\|60] [--write]` | Print/save time-boxed review plan markdown |
+| `brain overrides [--limit n]` | Human override journal |
+| `brain resolutions [--open <id>]` | List or print one resolution-memory record |
+| `brain correlations` | Print cross-signal “dragon” rows |
+| `brain review-packet` | Write `outputs/reviews/review-packet-*.md` (queues + board + correlations) |
+| `brain snapshot <wiki/path.md> [-m reason]` | Dated copy under `outputs/reviews/snapshots/` |
+| `brain steward [--domain <n> \| --all]` | Steward digest alias (same artifact as `steward-digest`) |
+| `brain decision-draft <raw-or-output-path> [--write] [--slug hint]` | Preview or write a `wiki/decisions/` stub with `include_in_ledger: false` until promoted |
+| `brain unsupported` | List `.brain/unsupported-claims.json` (`--status`, `--open <id>` for one row) |
+| `brain runs` / `brain run <id>` | List runs or print one record (replay JSON) |
 | `brain dashboard` | Dev server for the dashboard app |
 | `brain mcp` | Spawn MCP server (stdio) |
 
@@ -132,14 +162,85 @@ Global options: `brain -r /path/to/brain <command>` (single brain), `brain -w /w
 
 ## Dashboard
 
-- **Home**: trust banner, **readiness (doctor, cached)** from **`.brain/last-doctor.json`** (no full doctor re-run on each refresh), plus staleness/trust hints vs current git/state; Obsidian vault name hint; weekly workflow; metrics and actions as before  
+- **Home**: trust banner, **readiness (doctor, cached)** from **`.brain/last-doctor.json`** (no full doctor re-run on each refresh), plus staleness/trust hints vs current git/state; Obsidian vault name hint; weekly workflow; metrics and actions as before; quick links to trust tools  
+- **Operations** (`/operations`): hub for **Refresh operational intelligence** + links to **Executive** (`/executive`), **Review priority** (`/review-queue`), **Canonical board** (`/canonical-board`), **Cross-signal** (`/cross-signal`), **Resolutions** (`/resolutions`), **Steward** (`/steward`), **Unsupported claims** (`/unsupported-claims`), **Conflicts** (`/conflicts`), **Drift** (`/drift`), **Open loops** (`/open-loops`), **Source trace** (`/source-trace` + supersession hints when refreshed), **Heatmap** (`/heatmap`), **Relationships** (`/relationships`)
+- **Trust hub** (`/trust`): map of explainability / curation features  
+- **Governance** (`/governance`): hub — refresh trust+governance, steward digest & quarterly actions; **Canon promotions** (`/canon-promotions`), **Review session** (`/review-session`), **Canon drift watchlist** (`/canon-watchlist`), **Decision impact** (`/decision-impact`); **`/api/governance`** aggregates JSON + POST actions  
 - **Doctor** (`/doctor`): default **cached** snapshot from `last-doctor.json`; **Run fresh check** calls the live doctor API (does not update the cache from the browser — run `brain doctor` in the CLI to refresh the cache)  
 - **Workspace / Promotions** (multi-brain only): registry-level overview when `SECOND_BRAIN_WORKSPACE` is set  
-- **Search**: full-text over wiki / raw / outputs; optional “All brains” in workspace mode  
-- **Wiki**: sidebar file tree, rendered markdown, wikilinks, Obsidian URI using `SECOND_BRAIN_VAULT_NAME` / `.brain/settings.json` / folder basename / `SecondBrain` fallback  
+- **Promotion inbox** (`/promotion-inbox`): single-brain staging (**`.brain/promotion-inbox.json`**)  
+- **Coverage & scorecards** (`/coverage`): capture-vs-synthesis heuristics + domain bands  
+- **Decision ledger** (`/decisions`): filter/search; **Refresh index** rebuilds JSON + `wiki/decisions/INDEX.md`  
+- **Comparative synthesis** (`/compare`)  
+- **Run replay** (`/replay?id=<uuid>`)  
+- **Search**: full-text over wiki / raw / outputs; optional “All brains” in workspace mode; wiki hits show a **freshness** pill (first N matches) and a **Wiki + trace panel** deep link
+- **Decision draft** (`/decision-draft`): preview then write a `wiki/decisions/` stub from `raw/` or `outputs/`; stubs use **`include_in_ledger: false`** until you flip frontmatter and refresh the ledger  
+- **Wiki**: sidebar file tree, rendered markdown, wikilinks, Obsidian URI using `SECOND_BRAIN_VAULT_NAME` / `.brain/settings.json` / folder basename / `SecondBrain` fallback; **freshness** panel, **page quality** panel (bucket + “why” from `.brain/page-quality.json` after refresh), **canonical guard** from frontmatter, **claim trace** when `.brain/trace/` sidecar exists  
 - **Graph**: `@xyflow/react` view; orphan / hub emphasis  
-- **Diff**: unified diff + **per-path approve/reject** stored in `.brain/review-state.json`; suggested commit message from last ingest  
-- **Runs / Video**: run JSON history and daily video panel  
+- **Diff** (`/diff`): polished review for pending `wiki/` changes — grouped file list, status/decision badges, optional **side-by-side** (HEAD vs working tree), **next/previous** and **jump to next undecided**, keyboard shortcuts (`j`/`k` move file, `n` next undecided, `?` help), **deep link** `?file=<repo-relative-path>`, metadata (path, mtime, inferred source hint), trust copy per file, and **activity** hints (recent ingest / lint / review vs your review state). **Commit message** field prefilled from **`suggestWikiCommitWithContext`** with **reset to suggested** and stale-message warning when ingest/review is newer than the suggestion context.
+- **Runs / Video**: run JSON history (replay links) and daily video panel  
+
+### Trust & explainability (v2)
+
+| Feature | What it does | What it is *not* |
+|--------|----------------|-------------------|
+| **Claim trace** | `.brain/trace/*.json` maps **headings/sections** to raw paths + ingest timestamps; wiki UI summarizes *direct* vs *synthesized* support. Optional `<!-- trace:sec-id -->` immediately before a `##` heading gives a **stable section id** on ingest. | Not sentence-level certainty or automatic fact-checking. |
+| **Promotion inbox** | Holds candidate artifacts before they become canonical wiki prose; promotions append with provenance frontmatter. | Not auto-merge into master in multi-brain mode (still use `/promotions` + `brain promote`). |
+| **Coverage gaps / scorecards** | File-tree + ingest-cache heuristics flag domains where raw/outbox volume may outpace wiki depth. | Not semantic “missing topic” detection. |
+| **Decision ledger** | Indexes decision-like wiki pages into **`.brain/decision-ledger.json`** + `wiki/decisions/INDEX.md` when you **Refresh**. | Not autonomous extraction from all prose (keeps noise low). |
+| **Freshness badges** | Compares `last_updated`, listed `sources`, and ingest cache timestamps. | **Not** truth — a recency signal only. |
+| **Run replay** | Runs store optional `changedFiles`, `inputsConsidered`, `trustNotes`, `lineageIds`. | Not a full git event log — brain-local audit JSON. |
+| **Canonical lock** | `wiki_edit_policy: manual_review \| locked` (or `canonical: true`) stops **silent ingest merge**; proposals go to **`.brain/proposed-wiki-updates/`**. | Does not block human edits in Obsidian. |
+| **Comparative synthesis** | Structured compare of 2–4 wiki paths → `outputs/comparisons/`. | Not a substitute for reading sources. |
+| **Lineage** | `.brain/lineage/*.json` + `lineage_id` on outputs links prompts / retrieval / runs. | Not cryptographic proof — use git for audit. |
+
+### Operational intelligence (v2)
+
+Local JSON under `.brain/` powers dashboard views and CLI lists. **Strengths:** surfaces weak provenance, stale synthesis, linked tensions, and “what to review next” without a database. **Limits:** heuristics can miss real issues or flag noise; scores are **not** epistemic confidence; drift and conflicts mean **“worth a human look”**, not “wrong.”
+
+| State file | Feature |
+|------------|---------|
+| `.brain/unsupported-claims.json` | Queue of pages/sections likely under-supported (few sources, decision-ish language, trace gaps). |
+| `.brain/conflicts.json` | Structured tensions (e.g. opposing status polarity across linked wiki pages). |
+| `.brain/page-quality.json` | Per-page score 0–100 + `reasons[]` + bucket (`high` / `medium` / `low`). |
+| `.brain/source-lineage.json` | Raw path → wiki pages, outputs, decisions that cite it in frontmatter `sources`. |
+| `.brain/knowledge-drift.json` | Wiki stale vs newer raw/domain activity — “likely needs review.” |
+| `.brain/open-loops.json` | Questions, TODOs, follow-ups scraped from wiki and outputs. |
+| `wiki/relationship-hub.md` (+ optional `wiki/people/INDEX.md`, `wiki/projects/INDEX.md`) | Readable people/project/decision hubs from `graph.json`. |
+| `.brain/executive-snapshot.json` | Condensed headline view for Executive mode. |
+| `.brain/synthesis-heatmap.json` | Domain-level gap/coverage matrix for prioritizing synthesis work. |
+| `.brain/review-priority.json` | Ordered “review first” queue with explanations. |
+| `.brain/canonical-board.json` | High-trust page control room (canon, locks, proposals, combined warnings). |
+| `.brain/resolutions.json` | Durable notes when conflicts / drift / unsupported items are closed. |
+| `.brain/evidence-density.json` | Per-page support depth (sources, trace, buckets — not “truth”). |
+| `.brain/drift-decision-links.json` | Drift items that may affect decisions (ledger / `wiki/decisions/` / links). |
+| `.brain/human-review.json` | Human-reviewed vs AI-maintained badges (synced with frontmatter). |
+| `.brain/source-supersession.json` | Suggested newer/older raw pairs (conservative filename heuristics). |
+| `.brain/cross-signal-correlation.json` | Pages where multiple trust signals overlap (“dragons”). |
+| `.brain/canon-council.json` | Executive slice: canon promotions, hot board rows, watch-on-canon, evidence alerts. |
+| `.brain/review-debt.json` | Review backlog pressure (level, contributors, short history). |
+| `.brain/decision-sunset.json` | Hints to revalidate aging or stressed decisions. |
+| `.brain/strategic-themes.json` | Heuristic recurring themes across loops / decisions / queue. |
+| `.brain/confidence-history.json` | Rolling per-page advisory composite snapshots (trends). |
+| `.brain/human-overrides.json` | Deliberate human divergences from AI / system suggestions. |
+| `.brain/canon-admission.json` | Checklist pass/warn/fail for canon / promotion targets. |
+
+### Diff review & commit (dashboard)
+
+The safest mental model: **nothing is canon until it is committed to git.**
+
+1. **Ingest** proposes edits under `wiki/` (and updates indexes).  
+2. Open **`/diff`**. Pending files appear in the left list (undecided items highlighted). Use **Jump to first undecided** or **`n`** for the next undecided file.  
+3. For each file, read the diff (unified or side-by-side). Choose **Approve**, **Reject**, or **Clear**. Decisions are stored in **`.brain/review-state.json`** and shown as badges immediately.  
+4. Edit the **commit message** if you want; use **Reset to suggested** to pull the latest auto-generated summary. Empty messages are blocked before commit.  
+5. Actions at the bottom: **Save decisions only** (writes review state, no git commit), **Commit approved changes** (commits only approved paths with your message; rejected paths are restored from `HEAD` for those files), or **Approve all pending + commit** (with confirmation).  
+6. After a commit or batch of decisions, **refresh** the diff list. From the CLI you can still run **`brain approve`** / **`brain approve --all`** as before.
+
+**Why this improves trust:** you see **exactly** what will enter history, file by file, with an explicit message. Git remains the **audit trail**; the dashboard is a **structured reviewer** on top of it.
+
+### Weekly rhythm (single-brain)
+
+Recommended order: **ingest → diff / review → commit → review → lint** (then optional `brain ask`, outputs, or video).
 
 ### Dashboard env
 
@@ -150,9 +251,9 @@ Run `brain dashboard` (sets `SECOND_BRAIN_ROOT` or workspace env for the child p
 **Uncommitted `wiki/` changes are provisional.** Ingest only *proposes* updates; you decide what becomes history.
 
 1. Run `brain ingest` (or dashboard **Ingest**).  
-2. Inspect **`brain diff`** or the **Diff** page — read the full patch.  
-3. Optionally mark each path **Approve** / **Reject** / **Clear** in the UI (stored under `.brain/review-state.json`).  
-4. Commit: **`brain approve`** commits **approved** paths only and clears matching review entries; rejected paths are restored from `HEAD` for that file.  
+2. Inspect **`brain diff`** or the dashboard **`/diff`** page — read the full patch per file (see **Diff review & commit** above).  
+3. Mark each path **Approve** / **Reject** / **Clear** in the UI (stored under `.brain/review-state.json`), or review locally and use the CLI only.  
+4. Commit **approved** paths: use the dashboard **Commit approved changes** (with your edited message) or **`brain approve`** / **`brain approve -m "…"`**. Rejected paths are restored from `HEAD` for that file.  
 5. For a **full** wiki commit after you’ve reviewed everything outside the UI: `brain approve --all -m "…"`. Without `-m`, the CLI suggests a message from the latest ingest run when possible.
 
 Rejected paths use `git checkout -- <repo-relative-path>` — always re-run **Diff** after a batch of decisions.
@@ -176,6 +277,7 @@ Run from a shell with `SECOND_BRAIN_ROOT` set (or `brain -r /path/to/vault …`)
 
 ```bash
 brain ingest
+brain operational       # or: brain operational refresh — rebuild trust/ops JSON
 brain diff              # or use the dashboard Diff page
 # Mark approve/reject in dashboard, then:
 brain approve
@@ -256,19 +358,13 @@ Suggested cadence for a personal operator:
 - **Graph**: `.brain/graph.json` from wiki wikilinks + unresolved targets.  
 - **PDF**: via `pdf-parse` (may need system deps in constrained environments).
 
-## Recommended v2 enhancements
+## Recommended v2+ enhancements
 
-- **Local semantic ranker** (lightweight embeddings) on top of the file index  
-- **Merge suggestions** for near-duplicate wiki pages  
-- **Confidence / provenance** annotations per claim  
-- **OCR pipeline** for `raw/screenshots/`  
-- **Voice note ingest** and automatic diarization for `raw/transcripts/`  
-- **MOC generator** per domain with automated `INDEX` sections  
-- **Relationship map** for people ↔ projects ↔ decisions  
-- **Timeline view** for decisions and outputs  
-- **Focus mode** (filter dashboard + search by domain)  
-- **Prompt library** sync with `wiki/prompts/` and versioned `.brain/prompts/`  
-- **Incremental git staging** UI with generated commit messages from run summaries  
+Longer lists (trust, workflow, knowledge UX, search, media, outputs, safety) live in **[`docs/ROADMAP-V2.md`](docs/ROADMAP-V2.md)** — **recommendations only**, not commitments.
+
+**High level:** local semantic ranker on the file index; merge suggestions for near-duplicate pages; confidence/provenance per claim; OCR for screenshots; voice + diarization for transcripts; MOC generator per domain; relationship map; timeline view; focus mode by domain; prompt library sync (`wiki/prompts/` ↔ `.brain/prompts/`); incremental git staging with richer messages.
+
+**Code seams** for future trust features (enrichment, suggest-commit, review state) are noted in [`packages/core/src/trust/README.md`](packages/core/src/trust/README.md).
 
 ## Product framing
 

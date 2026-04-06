@@ -9,6 +9,7 @@ import { writeRun } from "../runs.js";
 import { writeState } from "../state.js";
 import type { KnowledgeGraph } from "../graph/builder.js";
 import { createLlm } from "../llm/factory.js";
+import { refreshOperationalIntelligence } from "../trust/refresh-operational.js";
 
 export interface LintFinding {
   severity: "info" | "warn" | "error";
@@ -178,6 +179,23 @@ export async function runLint(cfg: BrainConfig): Promise<LintReport> {
         message: "Contradiction scan skipped (LLM parse error).",
       });
     }
+  }
+
+  try {
+    const op = await refreshOperationalIntelligence(cfg, {});
+    if (op.errors.length) {
+      findings.push({
+        severity: "info",
+        code: "governance.refresh",
+        message: `Operational/governance refresh: ${op.errors.length} issue(s) — ${op.errors.slice(0, 3).join("; ")}`,
+      });
+    }
+  } catch (e) {
+    findings.push({
+      severity: "info",
+      code: "governance.refresh.skipped",
+      message: `Trust refresh after lint failed: ${String(e)}`,
+    });
   }
 
   const report: LintReport = {

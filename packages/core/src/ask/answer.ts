@@ -7,6 +7,7 @@ import { searchIndex } from "../search/query.js";
 import { createLlm } from "../llm/factory.js";
 import { appendLog } from "../log-append.js";
 import { writeRun } from "../runs.js";
+import { recordOutputLineage, attachLineageIdToOutputFile } from "../trust/lineage.js";
 
 export async function runAsk(
   cfg: BrainConfig,
@@ -59,9 +60,23 @@ export async function runAsk(
     "",
   ].join("\n");
   await fs.writeFile(answerPath, body, "utf8");
+  const answerRel = path.relative(cfg.root, answerPath).split(path.sep).join("/");
+  const lineage = await recordOutputLineage(paths, {
+    promptText: question,
+    promptSource: "cli",
+    action: "ask",
+    outputRelPath: answerRel,
+    sourcePages: hits.map((h) => h.path),
+    affectedWikiPaths: options.promote
+      ? [`wiki/topics/promoted-${slug(question)}.md`]
+      : undefined,
+  });
+  await attachLineageIdToOutputFile(answerPath, lineage.id);
 
+  let promotedRel: string | undefined;
   if (options.promote) {
     const promo = path.join(paths.wiki, "topics", `promoted-${slug(question)}.md`);
+    promotedRel = path.relative(cfg.root, promo).split(path.sep).join("/");
     await fs.mkdir(path.dirname(promo), { recursive: true });
     await fs.writeFile(
       promo,
@@ -73,6 +88,7 @@ export async function runAsk(
         `last_updated: ${new Date().toISOString().slice(0, 10)}`,
         `sources:`,
         ...hits.map((h) => `  - ${h.path}`),
+        `lineage_id: ${lineage.id}`,
         "---",
         "",
         text,
@@ -82,12 +98,16 @@ export async function runAsk(
     );
   }
 
-  await appendLog(paths, `ask: saved ${path.relative(cfg.root, answerPath)}`);
+  await appendLog(paths, `ask: saved ${answerRel}`);
   await writeRun(paths, {
     kind: "ask",
     ok: true,
     summary: `ask: ${question.slice(0, 80)}`,
-    details: { answerPath: path.relative(cfg.root, answerPath) },
+    changedFiles: promotedRel ? [answerRel, promotedRel] : [answerRel],
+    inputsConsidered: hits.map((h) => h.path),
+    linkedOutputs: [answerRel],
+    lineageIds: [lineage.id],
+    details: { answerPath: answerRel, lineageId: lineage.id },
   });
 
   return { answerPath, text };

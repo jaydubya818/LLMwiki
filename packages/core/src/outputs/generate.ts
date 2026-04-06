@@ -5,6 +5,7 @@ import { brainPaths } from "../paths.js";
 import { createLlm } from "../llm/factory.js";
 import { appendLog } from "../log-append.js";
 import { writeRun } from "../runs.js";
+import { recordOutputLineage, attachLineageIdToOutputFile } from "../trust/lineage.js";
 import { loadSearchIndex } from "../search/indexer.js";
 import { searchIndex } from "../search/query.js";
 
@@ -91,12 +92,26 @@ export async function runStructuredOutput(
     "",
   ].join("\n");
   await fs.writeFile(full, md, "utf8");
-  await appendLog(paths, `output: ${path.relative(cfg.root, full)}`);
+  const outRel = path.relative(cfg.root, full).split(path.sep).join("/");
+  const lineage = await recordOutputLineage(paths, {
+    promptText: `${PROMPTS[kind]} :: ${topic}`,
+    promptTemplateId: `output:${kind}`,
+    promptSource: "template",
+    action: `output:${kind}`,
+    outputRelPath: outRel,
+    sourcePages: hits.map((h) => h.path),
+  });
+  await attachLineageIdToOutputFile(full, lineage.id);
+  await appendLog(paths, `output: ${outRel}`);
   await writeRun(paths, {
     kind: "output",
     ok: true,
     summary: `${kind} for ${topic.slice(0, 60)}`,
-    details: { path: path.relative(cfg.root, full) },
+    changedFiles: [outRel],
+    inputsConsidered: hits.map((h) => h.path),
+    linkedOutputs: [outRel],
+    lineageIds: [lineage.id],
+    details: { path: outRel, lineageId: lineage.id },
   });
   return full;
 }

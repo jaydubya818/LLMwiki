@@ -51,7 +51,8 @@ export async function setFileDecision(
 
 export async function applyReviewDecisions(
   cfg: BrainConfig,
-  paths: BrainPaths
+  paths: BrainPaths,
+  options?: { commitMessage?: string }
 ): Promise<{ committed: boolean; message: string }> {
   const state = await readReviewState(paths);
   const rejected = Object.entries(state.files)
@@ -67,13 +68,37 @@ export async function applyReviewDecisions(
     return { committed: false, message: "No approved files to commit." };
   }
   const suggested = await suggestWikiCommitMessage(paths);
-  const message = `${suggested} | approved ${approved.length} path(s)`;
+  const custom = options?.commitMessage?.trim();
+  const message = custom
+    ? custom
+    : `${suggested} | approved ${approved.length} path(s)`;
   await stageWikiAndCommitForBrain(cfg, message, approved);
   await writeReviewState(paths, { updatedAt: new Date().toISOString(), files: {} });
   await appendLog(paths, `approve: committed ${approved.join(", ")}`);
   const pending = (await getWikiStatusFilesForBrain(cfg)).map((f) => f.path);
   await writeState(paths, { pendingWikiChanges: pending });
   return { committed: true, message };
+}
+
+/** Mark every path in `repoPaths` as approved once (pending or unset only). */
+export async function approveAllPendingPaths(
+  paths: BrainPaths,
+  repoPaths: string[]
+): Promise<ReviewState> {
+  const state = await readReviewState(paths);
+  const files = { ...state.files };
+  for (const p of repoPaths) {
+    const d = files[p];
+    if (d === undefined || d === "pending") {
+      files[p] = "approved";
+    }
+  }
+  const next: ReviewState = {
+    updatedAt: new Date().toISOString(),
+    files,
+  };
+  await writeReviewState(paths, next);
+  return next;
 }
 
 export async function commitAllWikiForBrain(

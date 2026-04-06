@@ -29,6 +29,13 @@ import matter from "gray-matter";
 import { ensureGitRepo, getWikiStatusFilesForBrain } from "../git/service.js";
 import { buildSearchIndex } from "../search/indexer.js";
 import { buildKnowledgeGraph } from "../graph/builder.js";
+import { parseWikiEditPolicy, blocksAutoIngestMerge } from "../trust/canonical-lock.js";
+import {
+  buildSectionTracesFromIngest,
+  writeWikiTrace,
+} from "../trust/trace.js";
+import { writeProposedWikiUpdate } from "../trust/proposed-wiki.js";
+import { ensureInboxMigratedFromLegacy } from "../trust/promotion-inbox.js";
 
 const INGEST_SYSTEM = `You are a knowledge wiki maintainer. Output ONLY valid JSON matching this shape:
 {
@@ -76,6 +83,12 @@ export async function runIngest(
   let skipped = 0;
   const catalogLines: string[] = [];
   const dashBullets: string[] = [];
+  const changedWikiFiles: string[] = [];
+  const proposedUpdates: string[] = [];
+  const trustNotes: string[] = [];
+  const inputsProcessed: string[] = [];
+
+  await ensureInboxMigratedFromLegacy(cfg.root, paths);
 
   for (const abs of files) {
     const ext = path.extname(abs);
@@ -146,7 +159,47 @@ export async function runIngest(
             sources: [...mergedSources],
           }, bodyNote);
 
-      await fs.writeFile(wikiFile, md, "utf8");
+      const wikiRel = path
+        .relative(cfg.root, wikiFile)
+        .split(path.sep)
+        .join("/");
+      const policy = existing
+        ? parseWikiEditPolicy(matter(existing).data as Record<string, unknown>)
+        : "open";
+      const lockedMerge = existing && blocksAutoIngestMerge(policy);
+
+      if (lockedMerge) {
+        const propRel = await writeProposedWikiUpdate(paths, md, {
+          targetWikiRel: wikiRel,
+          reason: "wiki_edit_policy",
+          rawSourceRel: rel,
+          policy,
+          planSummary: plan.summary.slice(0, 500),
+        });
+        proposedUpdates.push(propRel);
+        trustNotes.push(
+          `Did not auto-merge ingest into ${wikiRel} (${policy}). Proposed: ${propRel}`
+        );
+      } else {
+        await fs.writeFile(wikiFile, md, "utf8");
+        changedWikiFiles.push(wikiRel);
+        const body = matter(md).content;
+        const ingestTimes: Record<string, string | undefined> = {};
+        for (const s of mergedSources) {
+          ingestTimes[s] = s === rel ? new Date().toISOString() : cache[s]?.lastIngestedAt;
+        }
+        await writeWikiTrace(paths, {
+          version: 1,
+          wikiPath: wikiRel,
+          updatedAt: new Date().toISOString(),
+          sections: buildSectionTracesFromIngest({
+            wikiRel,
+            markdownBody: body,
+            sourcesThisRun: [...mergedSources],
+            ingestCacheTimes: ingestTimes,
+          }),
+        });
+      }
     }
 
     catalogLines.push(...plan.indexLines);
@@ -159,6 +212,7 @@ export async function runIngest(
       lastIngestedAt: new Date().toISOString(),
       contentHash: h,
     };
+    inputsProcessed.push(rel);
     processed++;
   }
 
@@ -195,6 +249,10 @@ export async function runIngest(
     kind: "ingest",
     ok: errors.length === 0,
     summary: `ingest processed=${processed} skipped=${skipped}`,
+    changedFiles: [...changedWikiFiles, ...proposedUpdates],
+    inputsConsidered: inputsProcessed,
+    suggestedCommitMessage,
+    trustNotes: trustNotes.length ? trustNotes : undefined,
     details: {
       errors,
       catalogLines,
@@ -202,6 +260,9 @@ export async function runIngest(
       pendingWikiPaths: pending,
       pendingCount: pending.length,
       suggestedCommitMessage,
+      changedWikiFiles,
+      proposedWikiUpdates: proposedUpdates,
+      trustNotes,
     },
     errors: errors.length ? errors : undefined,
   });

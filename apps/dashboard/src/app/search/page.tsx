@@ -2,7 +2,13 @@
 
 import { useCallback, useState } from "react";
 
-type Hit = { path: string; kind: string; score: number; preview: string };
+type Hit = {
+  path: string;
+  kind: string;
+  score: number;
+  preview: string;
+  freshness?: { category: string; explain: string };
+};
 type CrossHit = { brain: string; hit: Hit };
 
 export default function SearchPage() {
@@ -96,18 +102,44 @@ export default function SearchPage() {
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="font-mono text-sm text-[var(--accent)]">{h.path}</span>
-                <span className="text-xs text-[var(--muted)]">
+                <span className="flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]">
+                  {h.kind === "wiki" && h.freshness ? (
+                    <span
+                      className="rounded border border-[var(--border)] px-1.5 py-0.5 capitalize text-[10px] text-[var(--foreground)]"
+                      title={h.freshness.explain}
+                    >
+                      {h.freshness.category}
+                    </span>
+                  ) : null}
                   {brain ? `${brain} · ` : ""}
                   {h.kind} · score {h.score.toFixed(1)}
                 </span>
               </div>
               <p className="mt-2 text-sm text-[var(--muted)]">{h.preview}</p>
-              <a
-                href={`/wiki?path=${encodeURIComponent(h.path)}`}
-                className="mt-2 inline-block text-xs text-sky-400 hover:underline"
-              >
-                Open in wiki viewer
-              </a>
+              {h.kind === "wiki" ? (
+                <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                  <a
+                    href={`/wiki?path=${encodeURIComponent(h.path)}`}
+                    className="text-sky-400 hover:underline"
+                  >
+                    Open in wiki
+                  </a>
+                  <a
+                    href={`/wiki?path=${encodeURIComponent(h.path)}&panel=trace`}
+                    className="text-emerald-400 hover:underline"
+                    title="Scrolls to claim trace panel when a sidecar exists"
+                  >
+                    Wiki + trace panel
+                  </a>
+                </div>
+              ) : (
+                <a
+                  href={`/wiki?path=${encodeURIComponent(h.path)}`}
+                  className="mt-2 inline-block text-xs text-sky-400 hover:underline"
+                >
+                  Open in wiki viewer
+                </a>
+              )}
             </li>
           );
         })}
