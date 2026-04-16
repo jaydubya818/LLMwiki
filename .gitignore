@@ -11,3 +11,13 @@ dist
 .brain/
 coverage
 .vercel
+
+# Local wiki symlink (Obsidian vault link — machine-specific)
+wiki
+wiki-bak-*/
+
+# Operational scratch files
+outputs/
+raw/
+log.md
+.graphify_python
