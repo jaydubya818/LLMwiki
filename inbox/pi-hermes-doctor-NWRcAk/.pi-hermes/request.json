@@ -1,0 +1,19 @@
+{
+  "request_id": "req_hermes_doctor",
+  "session_id": "sess_6017763b0ad8",
+  "objective": "Create /Users/jaywest/My LLM Wiki/inbox/pi-hermes-doctor-NWRcAk/doctor.md with one sentence confirming Hermes doctor succeeded, then return the required structured result block only. Do not modify any other files.",
+  "workdir": "/Users/jaywest/.hermes/hermes-agent",
+  "allowed_tools": [
+    "bash"
+  ],
+  "allowed_actions": [
+    "write"
+  ],
+  "timeout_seconds": 120,
+  "output_dir": "/Users/jaywest/My LLM Wiki/inbox/pi-hermes-doctor-NWRcAk",
+  "metadata": {
+    "mission_id": "hermes-doctor",
+    "run_id": "doctor-run",
+    "step_id": "doctor-step"
+  }
+}
